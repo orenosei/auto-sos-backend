@@ -3,6 +3,9 @@ import cors from "cors";
 import dotenv from 'dotenv';
 
 import companiesRoutes from './routes/companiesRoutes.js';
+import usersRoutes from './routes/usersRoutes.js';
+import authRoutes from './routes/authRoutes.js';
+import servicesRoutes from './routes/servicesRoutes.js';
 
 dotenv.config();
 
@@ -17,7 +20,10 @@ app.use(express.json());
 app.use(cors());
 
 // Sử dụng routes
+app.use('/api/auth', authRoutes);
+app.use('/api/services', servicesRoutes);
 app.use('/api/companies', companiesRoutes);
+app.use('/api/users', usersRoutes);
 
 
 app.listen(PORT, () => {
