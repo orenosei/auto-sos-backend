@@ -4,7 +4,8 @@ import { getAllCompanies,
     getCompanyById, 
     createCompany, 
     updateCompany, 
-    deleteCompany } from '../controllers/companiesController.js';
+    deleteCompany,
+    getNearbyCompanies } from '../controllers/companiesController.js';
 
 import {
     getCompanyServices,
@@ -16,6 +17,7 @@ import {
 const router = express.Router();
 
 router.get('/', getAllCompanies);
+router.get('/nearby', getNearbyCompanies); // Phải nằm trước /:id để tránh xung đột
 router.get('/:id', getCompanyById);
 
 // Company services (company_services)

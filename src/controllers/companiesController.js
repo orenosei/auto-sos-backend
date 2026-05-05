@@ -192,3 +192,63 @@ export const deleteCompany = async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
+
+/**
+ * Lấy danh sách công ty gần nhất dựa trên vị trí GPS
+ * Query params: latitude, longitude, radiusKm (tùy chọn, mặc định 10km)
+ */
+export const getNearbyCompanies = async (req, res) => {
+  const { latitude, longitude, radiusKm = 10 } = req.query;
+
+  if (latitude == null || longitude == null) {
+    return res.status(400).json({
+      error: "Missing required query params: latitude, longitude",
+    });
+  }
+
+  const lat = parseFloat(latitude);
+  const lon = parseFloat(longitude);
+  const radius = parseFloat(radiusKm);
+
+  if (isNaN(lat) || isNaN(lon) || isNaN(radius)) {
+    return res.status(400).json({
+      error: "Invalid parameters: latitude, longitude, and radiusKm must be numbers",
+    });
+  }
+
+  if (radius <= 0) {
+    return res.status(400).json({
+      error: "radiusKm must be greater than 0",
+    });
+  }
+
+  try {
+    const companies = await sql.query(
+      `
+        SELECT 
+          ${COMPANY_SELECT},
+          ST_DistanceSphere(
+            absolute_address::geometry,
+            ST_GeomFromText('POINT(${lon} ${lat})', 4326)
+          ) / 1000.0 as distance_km
+        FROM companies
+        WHERE ST_DWithin(
+          absolute_address::geography,
+          ST_GeogFromText('SRID=4326;POINT(${lon} ${lat})'),
+          ${radius * 1000}
+        )
+        ORDER BY distance_km ASC
+      `
+    );
+
+    res.status(200).json({
+      success: true,
+      data: companies,
+      userLocation: { latitude: lat, longitude: lon },
+      radiusKm: radius,
+    });
+  } catch (error) {
+    console.error("Error fetching nearby companies:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
