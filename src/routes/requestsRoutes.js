@@ -19,6 +19,7 @@ import {
   getRequestImages,
   addRequestImage,
   deleteRequestImage,
+  getCloudinarySignature,
 } from "../controllers/requestImagesController.js";
 
 import {
@@ -42,6 +43,7 @@ router.put("/:id/services/:service_id", updateRequestService);
 router.delete("/:id/services/:service_id", deleteRequestService);
 
 // Request images (request_images)
+router.post("/cloudinary/signature", getCloudinarySignature);
 router.get("/:id/images", getRequestImages);
 router.post("/:id/images", addRequestImage);
 router.delete("/:id/images/:image_id", deleteRequestImage);

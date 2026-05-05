@@ -1,4 +1,8 @@
+import crypto from "node:crypto";
+
 import { sql } from "../config/db.js";
+
+const CLOUDINARY_UPLOAD_FOLDER = "auto-sos/requests";
 
 const ensureRequestExists = async (requestId) => {
   const rows = await sql.query(
@@ -6,6 +10,40 @@ const ensureRequestExists = async (requestId) => {
     [requestId]
   );
   return rows.length > 0;
+};
+
+const buildCloudinarySignature = (params, apiSecret) => {
+  const baseString = Object.keys(params)
+    .sort()
+    .map((key) => `${key}=${params[key]}`)
+    .join("&");
+
+  return crypto.createHash("sha1").update(baseString + apiSecret).digest("hex");
+};
+
+export const getCloudinarySignature = async (_req, res) => {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+  if (!cloudName || !apiKey || !apiSecret) {
+    return res.status(500).json({ error: "Missing Cloudinary configuration" });
+  }
+
+  const timestamp = Math.floor(Date.now() / 1000);
+  const folder = CLOUDINARY_UPLOAD_FOLDER;
+  const signature = buildCloudinarySignature({ folder, timestamp }, apiSecret);
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      cloudName,
+      apiKey,
+      timestamp,
+      folder,
+      signature,
+    },
+  });
 };
 
 export const getRequestImages = async (req, res) => {

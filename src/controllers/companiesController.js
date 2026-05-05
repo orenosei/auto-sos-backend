@@ -39,9 +39,25 @@ const COMPANY_SELECT = `
 export const getAllCompanies = async (req, res) => {
   try {
     const companies = await sql.query(
-      `SELECT ${COMPANY_SELECT} FROM companies ORDER BY company_id DESC`
+      `
+        SELECT
+          ${COMPANY_SELECT},
+          COALESCE((
+            SELECT json_agg(json_build_object(
+              'service_id', s.service_id,
+              'service_name', s.service_name,
+              'service_description', s.service_description,
+              'service_price', cs.service_price
+            ) ORDER BY s.service_name)
+            FROM company_services cs
+            JOIN services s ON s.service_id = cs.service_id
+            WHERE cs.company_id = companies.company_id
+          ), '[]') AS services
+        FROM companies
+        ORDER BY company_id DESC
+      `
     );
-    console.log("Fetched companies:", companies);
+
     res.status(200).json({ success: true, data: companies });
   } catch (error) {
     console.error("Error fetching companies:", error);
@@ -53,13 +69,31 @@ export const getCompanyById = async (req, res) => {
   const { id } = req.params;
   try {
     const company = await sql.query(
-      `SELECT ${COMPANY_SELECT} FROM companies WHERE company_id = $1`,
+      `
+        SELECT
+          ${COMPANY_SELECT},
+          COALESCE((
+            SELECT json_agg(json_build_object(
+              'service_id', s.service_id,
+              'service_name', s.service_name,
+              'service_description', s.service_description,
+              'service_price', cs.service_price
+            ) ORDER BY s.service_name)
+            FROM company_services cs
+            JOIN services s ON s.service_id = cs.service_id
+            WHERE cs.company_id = companies.company_id
+          ), '[]') AS services
+        FROM companies
+        WHERE company_id = $1
+        LIMIT 1
+      `,
       [id]
     );
+
     if (company.length === 0) {
       return res.status(404).json({ error: "Company not found" });
     }
-    console.log("Fetched company:", company[0]);
+
     res.status(200).json({ success: true, data: company[0] });
   } catch (error) {
     console.error(`Error fetching company with id ${id}:`, error);
