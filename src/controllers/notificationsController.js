@@ -1,5 +1,13 @@
 import { sql } from "../config/db.js";
 
+const isDbTimeoutError = (error) => {
+  return (
+    error?.code === "UND_ERR_CONNECT_TIMEOUT" ||
+    error?.cause?.code === "UND_ERR_CONNECT_TIMEOUT" ||
+    String(error?.message ?? "").includes("fetch failed")
+  );
+};
+
 export const getNotifications = async (req, res) => {
   const { recipient_type, recipient_id, limit } = req.query;
 
@@ -23,6 +31,11 @@ export const getNotifications = async (req, res) => {
 
     res.status(200).json({ success: true, data: rows });
   } catch (error) {
+    if (isDbTimeoutError(error)) {
+      console.warn("Notifications DB timeout, returning empty list to keep UI responsive");
+      return res.status(200).json({ success: true, data: [] });
+    }
+
     console.error('Error fetching notifications:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
