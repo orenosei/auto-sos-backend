@@ -36,12 +36,28 @@ const COMPANY_SELECT = `
   registered_at
 `;
 
+// Qualified version for use inside SELECT queries that join other tables
+const COMPANY_SELECT_QUALIFIED = `
+  companies.company_id,
+  companies.company_name,
+  companies.relative_address,
+  ST_AsGeoJSON(companies.absolute_address::geometry) as absolute_address,
+  companies.company_phone,
+  companies.rescue_area,
+  companies.company_license,
+  companies.is_verified,
+  companies.registered_at
+`;
+
 export const getAllCompanies = async (req, res) => {
   try {
     const companies = await sql.query(
       `
         SELECT
-          ${COMPANY_SELECT},
+          ${COMPANY_SELECT_QUALIFIED},
+          COALESCE(r.avg_rating, NULL) AS average_rating,
+          COALESCE(r.count_reviews, NULL) AS review_count,
+          COALESCE(resp.avg_response_minutes, NULL) AS avg_response_minutes,
           COALESCE((
             SELECT json_agg(json_build_object(
               'service_id', s.service_id,
@@ -54,6 +70,21 @@ export const getAllCompanies = async (req, res) => {
             WHERE cs.company_id = companies.company_id
           ), '[]') AS services
         FROM companies
+        LEFT JOIN (
+          SELECT req.company_id,
+                 COUNT(*)::int AS count_reviews,
+                 ROUND(AVG(r.review_rating)::numeric,2) AS avg_rating
+          FROM reviews r
+          JOIN requests req ON req.request_id = r.request_id
+          GROUP BY req.company_id
+        ) r ON r.company_id = companies.company_id
+        LEFT JOIN (
+          SELECT req.company_id,
+                 ROUND(AVG(EXTRACT(EPOCH FROM (COALESCE(req.arrived_at, req.completed_at) - req.accepted_at))/60)::numeric,0) AS avg_response_minutes
+          FROM requests req
+          WHERE req.accepted_at IS NOT NULL AND (req.arrived_at IS NOT NULL OR req.completed_at IS NOT NULL)
+          GROUP BY req.company_id
+        ) resp ON resp.company_id = companies.company_id
         ORDER BY company_id DESC
       `
     );
@@ -71,7 +102,10 @@ export const getCompanyById = async (req, res) => {
     const company = await sql.query(
       `
         SELECT
-          ${COMPANY_SELECT},
+          ${COMPANY_SELECT_QUALIFIED},
+          COALESCE(r.avg_rating, NULL) AS average_rating,
+          COALESCE(r.count_reviews, NULL) AS review_count,
+          COALESCE(resp.avg_response_minutes, NULL) AS avg_response_minutes,
           COALESCE((
             SELECT json_agg(json_build_object(
               'service_id', s.service_id,
@@ -84,6 +118,21 @@ export const getCompanyById = async (req, res) => {
             WHERE cs.company_id = companies.company_id
           ), '[]') AS services
         FROM companies
+        LEFT JOIN (
+          SELECT req.company_id,
+                 COUNT(*)::int AS count_reviews,
+                 ROUND(AVG(r.review_rating)::numeric,2) AS avg_rating
+          FROM reviews r
+          JOIN requests req ON req.request_id = r.request_id
+          GROUP BY req.company_id
+        ) r ON r.company_id = companies.company_id
+        LEFT JOIN (
+          SELECT req.company_id,
+                 ROUND(AVG(EXTRACT(EPOCH FROM (COALESCE(req.arrived_at, req.completed_at) - req.accepted_at))/60)::numeric,0) AS avg_response_minutes
+          FROM requests req
+          WHERE req.accepted_at IS NOT NULL AND (req.arrived_at IS NOT NULL OR req.completed_at IS NOT NULL)
+          GROUP BY req.company_id
+        ) resp ON resp.company_id = companies.company_id
         WHERE company_id = $1
         LIMIT 1
       `,
@@ -260,12 +309,41 @@ export const getNearbyCompanies = async (req, res) => {
     const companies = await sql.query(
       `
         SELECT 
-          ${COMPANY_SELECT},
+          ${COMPANY_SELECT_QUALIFIED},
+          COALESCE(r.avg_rating, NULL) AS average_rating,
+          COALESCE(r.count_reviews, NULL) AS review_count,
+          COALESCE(resp.avg_response_minutes, NULL) AS avg_response_minutes,
           ST_DistanceSphere(
             absolute_address::geometry,
             ST_GeomFromText('POINT(${lon} ${lat})', 4326)
-          ) / 1000.0 as distance_km
+          ) / 1000.0 as distance_km,
+          COALESCE((
+            SELECT json_agg(json_build_object(
+              'service_id', s.service_id,
+              'service_name', s.service_name,
+              'service_description', s.service_description,
+              'service_price', cs.service_price
+            ) ORDER BY s.service_name)
+            FROM company_services cs
+            JOIN services s ON s.service_id = cs.service_id
+            WHERE cs.company_id = companies.company_id
+          ), '[]') AS services
         FROM companies
+        LEFT JOIN (
+          SELECT req.company_id,
+                 COUNT(*)::int AS count_reviews,
+                 ROUND(AVG(r.review_rating)::numeric,2) AS avg_rating
+          FROM reviews r
+          JOIN requests req ON req.request_id = r.request_id
+          GROUP BY req.company_id
+        ) r ON r.company_id = companies.company_id
+        LEFT JOIN (
+          SELECT req.company_id,
+                 ROUND(AVG(EXTRACT(EPOCH FROM (COALESCE(req.arrived_at, req.completed_at) - req.accepted_at))/60)::numeric,0) AS avg_response_minutes
+          FROM requests req
+          WHERE req.accepted_at IS NOT NULL AND (req.arrived_at IS NOT NULL OR req.completed_at IS NOT NULL)
+          GROUP BY req.company_id
+        ) resp ON resp.company_id = companies.company_id
         WHERE ST_DWithin(
           absolute_address::geography,
           ST_GeogFromText('SRID=4326;POINT(${lon} ${lat})'),
@@ -284,5 +362,39 @@ export const getNearbyCompanies = async (req, res) => {
   } catch (error) {
     console.error("Error fetching nearby companies:", error);
     res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+// Batch ratings for a list of company ids
+export const getCompaniesRatings = async (req, res) => {
+  const { ids } = req.query; // expected comma separated ids: ids=1,2,3
+  if (!ids) return res.status(400).json({ error: 'Missing query param: ids' });
+  const idArr = ids.split(',').map((s) => s.trim()).filter(Boolean).map((v) => Number(v)).filter(Number.isFinite);
+  if (idArr.length === 0) return res.status(400).json({ error: 'No valid ids provided' });
+
+  try {
+    const rows = await sql.query(
+      `
+        SELECT req.company_id::int AS company_id,
+               COUNT(r.review_id)::int AS review_count,
+               COALESCE(ROUND(AVG(r.review_rating)::numeric,2),0) AS average_rating
+        FROM requests req
+        LEFT JOIN reviews r ON r.request_id = req.request_id
+        WHERE req.company_id = ANY($1::int[])
+        GROUP BY req.company_id
+      `,
+      [idArr]
+    );
+
+    // build map
+    const map = {};
+    rows.forEach((row) => {
+      map[String(row.company_id)] = { average_rating: Number(row.average_rating), review_count: Number(row.review_count) };
+    });
+
+    res.status(200).json({ success: true, data: map });
+  } catch (error) {
+    console.error('Error fetching batch company ratings:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 };
