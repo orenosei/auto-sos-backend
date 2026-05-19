@@ -31,6 +31,7 @@ const USER_SELECT = `
   user_phone,
   user_email,
   avatar_url,
+  user_role,
   is_active,
   registered_at
 `;
@@ -136,6 +137,10 @@ export const loginUser = async (req, res) => {
     }
 
     const row = rows[0];
+    if (!row.is_active) {
+      return res.status(403).json({ error: "Account is inactive" });
+    }
+
     const ok = await bcrypt.compare(password, row.password_hash);
     if (!ok) {
       return res.status(401).json({ error: "Invalid credentials" });
@@ -148,11 +153,12 @@ export const loginUser = async (req, res) => {
       user_phone: row.user_phone,
       user_email: row.user_email,
       avatar_url: row.avatar_url,
+      user_role: row.user_role,
       is_active: row.is_active,
       registered_at: row.registered_at,
     };
 
-    res.status(200).json({ success: true, role: "user", data: user });
+    res.status(200).json({ success: true, role: row.user_role ?? "user", data: user });
   } catch (error) {
     console.error("Error logging in user:", error);
     res.status(500).json({ error: "Internal Server Error" });

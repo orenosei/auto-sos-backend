@@ -7,6 +7,7 @@ const USER_SELECT = `
   user_phone,
   user_email,
   avatar_url,
+  user_role,
   is_active,
   registered_at
 `;
@@ -43,6 +44,7 @@ export const createUser = async (req, res) => {
     user_phone,
     user_email,
     avatar_url,
+    user_role,
     is_active,
   } = req.body;
 
@@ -62,9 +64,10 @@ export const createUser = async (req, res) => {
           user_phone,
           user_email,
           avatar_url,
+          user_role,
           is_active
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::user_role_enum, 'user'::user_role_enum), $8)
         RETURNING ${USER_SELECT}
       `,
       [
@@ -74,6 +77,7 @@ export const createUser = async (req, res) => {
         user_phone,
         user_email ?? null,
         avatar_url ?? null,
+        user_role ?? null,
         is_active ?? true,
       ]
     );
@@ -94,6 +98,7 @@ export const updateUser = async (req, res) => {
     user_phone,
     user_email,
     avatar_url,
+    user_role,
     is_active,
   } = req.body;
 
@@ -108,8 +113,9 @@ export const updateUser = async (req, res) => {
           user_phone = COALESCE($4, user_phone),
           user_email = COALESCE($5, user_email),
           avatar_url = COALESCE($6, avatar_url),
-          is_active = COALESCE($7, is_active)
-        WHERE user_id = $8
+          user_role = COALESCE($7::user_role_enum, user_role),
+          is_active = COALESCE($8, is_active)
+        WHERE user_id = $9
         RETURNING ${USER_SELECT}
       `,
       [
@@ -119,6 +125,7 @@ export const updateUser = async (req, res) => {
         user_phone ?? null,
         user_email ?? null,
         avatar_url ?? null,
+        user_role ?? null,
         typeof is_active === "boolean" ? is_active : null,
         id,
       ]

@@ -8,11 +8,21 @@ const REQUEST_SELECT = `
   ST_AsGeoJSON(absolute_location::geometry) as absolute_location,
   relative_location,
   request_description,
+  issue_type,
+  priority,
   request_status,
   created_at,
   estimated_arrival,
+  accepted_at,
+  heading_at,
+  arrived_at,
   actual_arrival,
-  completed_at
+  completed_at,
+  cancelled_at,
+  cancelled_by,
+  cancel_reason,
+  final_price,
+  user_confirmed_at
 `;
 
 const REQUEST_STATUSES = new Set([
@@ -75,6 +85,112 @@ const ensureVehicleExists = async (vehicleId) => {
     [vehicleId]
   );
   return rows.length > 0;
+};
+
+const ensureVehicleBelongsToCompany = async (vehicleId, companyId) => {
+  const rows = await sql.query(
+    `
+      SELECT 1
+      FROM rescue_vehicles
+      WHERE vehicle_id = $1 AND company_id = $2
+      LIMIT 1
+    `,
+    [vehicleId, companyId]
+  );
+  return rows.length > 0;
+};
+
+const getRequestRow = async (requestId) => {
+  const rows = await sql.query(
+    `SELECT ${REQUEST_SELECT} FROM requests WHERE request_id = $1 LIMIT 1`,
+    [requestId]
+  );
+  return rows[0] ?? null;
+};
+
+const toEstimatedArrival = (estimatedArrival, etaMinutes) => {
+  if (estimatedArrival) return estimatedArrival;
+
+  const minutes = Number(etaMinutes);
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+
+  return new Date(Date.now() + Math.round(minutes) * 60 * 1000).toISOString();
+};
+
+const createNotification = async ({ recipientType, recipientId, requestId, title, message, type }) => {
+  if (!recipientType || recipientId == null || !title || !message) return;
+
+  try {
+    await sql.query(
+      `
+        INSERT INTO notifications (
+          recipient_type,
+          recipient_id,
+          request_id,
+          title,
+          message,
+          notification_type
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `,
+      [recipientType, recipientId, requestId ?? null, title, message, type ?? null]
+    );
+  } catch (error) {
+    console.error("Error creating notification:", error);
+  }
+};
+
+const getStatusNotification = (status) => {
+  const labels = {
+    accepted: ["Yêu cầu đã được tiếp nhận", "Công ty cứu hộ đã tiếp nhận yêu cầu của bạn."],
+    heading: ["Xe cứu hộ đang di chuyển", "Đơn vị cứu hộ đang trên đường đến vị trí của bạn."],
+    arrived: ["Cứu hộ đã đến nơi", "Đơn vị cứu hộ đã đến hiện trường."],
+    processing: ["Đang xử lý sự cố", "Đơn vị cứu hộ đang xử lý sự cố của bạn."],
+    completed: ["Yêu cầu đã hoàn tất", "Dịch vụ cứu hộ đã được đánh dấu hoàn tất."],
+    cancelled: ["Yêu cầu đã hủy", "Yêu cầu cứu hộ đã được hủy."],
+  };
+
+  return labels[status] ?? null;
+};
+
+const syncVehicleStatus = async (oldRequest, newRequest) => {
+  const oldVehicleId = oldRequest?.vehicle_id;
+  const newVehicleId = newRequest?.vehicle_id;
+
+  if (oldVehicleId && oldVehicleId !== newVehicleId) {
+    await sql.query(
+      `
+        UPDATE rescue_vehicles
+        SET vehicle_status = 'available'
+        WHERE vehicle_id = $1 AND vehicle_status = 'busy'
+      `,
+      [oldVehicleId]
+    );
+  }
+
+  if (!newVehicleId) return;
+
+  if (["accepted", "heading", "arrived", "processing"].includes(newRequest.request_status)) {
+    await sql.query(
+      `
+        UPDATE rescue_vehicles
+        SET vehicle_status = 'busy'
+        WHERE vehicle_id = $1
+      `,
+      [newVehicleId]
+    );
+  }
+
+  if (["completed", "cancelled"].includes(newRequest.request_status)) {
+    await sql.query(
+      `
+        UPDATE rescue_vehicles
+        SET vehicle_status = 'available'
+        WHERE vehicle_id = $1 AND vehicle_status = 'busy'
+      `,
+      [newVehicleId]
+    );
+  }
 };
 
 export const getRequests = async (req, res) => {
@@ -173,10 +289,16 @@ export const createRequest = async (req, res) => {
     absolute_location,
     relative_location,
     request_description,
+    issue_type,
+    priority,
     request_status,
     estimated_arrival,
+    eta_minutes,
     actual_arrival,
     completed_at,
+    service_id,
+    service_quantity,
+    service_price,
   } = req.body;
 
   const geogText = toGeogPointText(absolute_location);
@@ -215,6 +337,29 @@ export const createRequest = async (req, res) => {
       }
     }
 
+    let lockedServicePrice = service_price ?? null;
+    if (service_id != null && company_id != null && lockedServicePrice == null) {
+      const priceRows = await sql.query(
+        `
+          SELECT service_price
+          FROM company_services
+          WHERE company_id = $1 AND service_id = $2
+          LIMIT 1
+        `,
+        [company_id, service_id]
+      );
+
+      if (priceRows.length === 0) {
+        return res.status(400).json({
+          error: "Selected company does not provide this service",
+        });
+      }
+
+      lockedServicePrice = priceRows[0].service_price;
+    }
+
+    const estimatedArrivalValue = toEstimatedArrival(estimated_arrival, eta_minutes);
+
     const created = await sql.query(
       `
         INSERT INTO requests (
@@ -224,6 +369,8 @@ export const createRequest = async (req, res) => {
           absolute_location,
           relative_location,
           request_description,
+          issue_type,
+          priority,
           request_status,
           estimated_arrival,
           actual_arrival,
@@ -236,10 +383,12 @@ export const createRequest = async (req, res) => {
           ST_GeogFromText($4),
           $5,
           $6,
-          COALESCE($7::request_status_enum, 'pending'::request_status_enum),
-          $8,
-          $9,
-          $10
+          $7,
+          COALESCE($8, 'normal'),
+          COALESCE($9::request_status_enum, 'pending'::request_status_enum),
+          $10,
+          $11,
+          $12
         )
         RETURNING ${REQUEST_SELECT}
       `,
@@ -250,12 +399,68 @@ export const createRequest = async (req, res) => {
         geogText,
         relative_location ?? null,
         request_description ?? null,
+        issue_type ?? null,
+        priority ?? null,
         request_status ?? null,
-        estimated_arrival ?? null,
+        estimatedArrivalValue,
         actual_arrival ?? null,
         completed_at ?? null,
       ]
     );
+
+    if (service_id != null) {
+      await sql.query(
+        `
+          INSERT INTO request_services (
+            request_id,
+            service_id,
+            service_quantity,
+            service_price
+          )
+          VALUES ($1, $2, $3, $4)
+          ON CONFLICT (request_id, service_id)
+          DO UPDATE SET
+            service_quantity = EXCLUDED.service_quantity,
+            service_price = EXCLUDED.service_price
+        `,
+        [
+          created[0].request_id,
+          service_id,
+          service_quantity ?? 1,
+          lockedServicePrice ?? 0,
+        ]
+      );
+    }
+
+    await sql.query(
+      `
+        INSERT INTO request_status_history (
+          request_id,
+          old_status,
+          new_status,
+          changed_by,
+          note
+        )
+        VALUES ($1, NULL, $2::request_status_enum, $3, $4)
+      `,
+      [
+        created[0].request_id,
+        created[0].request_status,
+        user_id != null ? "user" : "system",
+        "Request created",
+      ]
+    );
+
+    if (created[0].company_id != null) {
+      await createNotification({
+        recipientType: "company",
+        recipientId: created[0].company_id,
+        requestId: created[0].request_id,
+        title: "Yêu cầu cứu hộ mới",
+        message: "Bạn có một yêu cầu cứu hộ mới cần tiếp nhận.",
+        type: "request_created",
+      });
+    }
 
     res.status(201).json({ success: true, data: created[0] });
   } catch (error) {
@@ -273,10 +478,19 @@ export const updateRequest = async (req, res) => {
     absolute_location,
     relative_location,
     request_description,
+    issue_type,
+    priority,
     request_status,
     estimated_arrival,
+    eta_minutes,
     actual_arrival,
     completed_at,
+    cancelled_by,
+    cancel_reason,
+    final_price,
+    user_confirmed_at,
+    changed_by,
+    note,
   } = req.body;
 
   const geogText = toGeogPointText(absolute_location);
@@ -303,12 +517,31 @@ export const updateRequest = async (req, res) => {
       }
     }
 
+    const current = await getRequestRow(id);
+    if (!current) {
+      return res.status(404).json({ error: "Request not found" });
+    }
+
+    const nextCompanyId = company_id ?? current.company_id;
+
     if (vehicle_id != null) {
-      const vehicleOk = await ensureVehicleExists(vehicle_id);
+      const vehicleOk = nextCompanyId != null
+        ? await ensureVehicleBelongsToCompany(vehicle_id, nextCompanyId)
+        : await ensureVehicleExists(vehicle_id);
       if (!vehicleOk) {
         return res.status(404).json({ error: "Vehicle not found" });
       }
     }
+
+    const estimatedArrivalValue = toEstimatedArrival(estimated_arrival, eta_minutes);
+    const acceptedAt = request_status === "accepted" ? new Date().toISOString() : null;
+    const headingAt = request_status === "heading" ? new Date().toISOString() : null;
+    const arrivedAt = request_status === "arrived" ? new Date().toISOString() : null;
+    const actualArrivalValue =
+      request_status === "arrived" ? new Date().toISOString() : actual_arrival ?? null;
+    const completedAtValue =
+      request_status === "completed" ? new Date().toISOString() : completed_at ?? null;
+    const cancelledAt = request_status === "cancelled" ? new Date().toISOString() : null;
 
     const updated = await sql.query(
       `
@@ -317,14 +550,30 @@ export const updateRequest = async (req, res) => {
           user_id = COALESCE($1, user_id),
           company_id = COALESCE($2, company_id),
           vehicle_id = COALESCE($3, vehicle_id),
-          absolute_location = COALESCE(ST_GeogFromText($4), absolute_location),
+          absolute_location = COALESCE(
+            CASE
+              WHEN $4::text IS NULL THEN NULL
+              ELSE ST_GeogFromText($4)
+            END,
+            absolute_location
+          ),
           relative_location = COALESCE($5, relative_location),
           request_description = COALESCE($6, request_description),
-          request_status = COALESCE($7::request_status_enum, request_status),
-          estimated_arrival = COALESCE($8, estimated_arrival),
-          actual_arrival = COALESCE($9, actual_arrival),
-          completed_at = COALESCE($10, completed_at)
-        WHERE request_id = $11
+          issue_type = COALESCE($7, issue_type),
+          priority = COALESCE($8, priority),
+          request_status = COALESCE($9::request_status_enum, request_status),
+          estimated_arrival = COALESCE($10, estimated_arrival),
+          accepted_at = COALESCE($11, accepted_at),
+          heading_at = COALESCE($12, heading_at),
+          arrived_at = COALESCE($13, arrived_at),
+          actual_arrival = COALESCE($14, actual_arrival),
+          completed_at = COALESCE($15, completed_at),
+          cancelled_at = COALESCE($16, cancelled_at),
+          cancelled_by = COALESCE($17, cancelled_by),
+          cancel_reason = COALESCE($18, cancel_reason),
+          final_price = COALESCE($19, final_price),
+          user_confirmed_at = COALESCE($20, user_confirmed_at)
+        WHERE request_id = $21
         RETURNING ${REQUEST_SELECT}
       `,
       [
@@ -334,19 +583,63 @@ export const updateRequest = async (req, res) => {
         geogText,
         relative_location ?? null,
         request_description ?? null,
+        issue_type ?? null,
+        priority ?? null,
         request_status ?? null,
-        estimated_arrival ?? null,
-        actual_arrival ?? null,
-        completed_at ?? null,
+        estimatedArrivalValue,
+        acceptedAt,
+        headingAt,
+        arrivedAt,
+        actualArrivalValue,
+        completedAtValue,
+        cancelledAt,
+        cancelled_by ?? null,
+        cancel_reason ?? null,
+        final_price ?? null,
+        user_confirmed_at ?? null,
         id,
       ]
     );
 
-    if (updated.length === 0) {
-      return res.status(404).json({ error: "Request not found" });
+    const next = updated[0];
+
+    if (request_status != null && current.request_status !== next.request_status) {
+      await sql.query(
+        `
+          INSERT INTO request_status_history (
+            request_id,
+            old_status,
+            new_status,
+            changed_by,
+            note
+          )
+          VALUES ($1, $2::request_status_enum, $3::request_status_enum, $4, $5)
+        `,
+        [
+          id,
+          current.request_status,
+          next.request_status,
+          changed_by ?? cancelled_by ?? "system",
+          note ?? null,
+        ]
+      );
+
+      const notification = getStatusNotification(next.request_status);
+      if (notification && next.user_id != null) {
+        await createNotification({
+          recipientType: "user",
+          recipientId: next.user_id,
+          requestId: next.request_id,
+          title: notification[0],
+          message: notification[1],
+          type: `request_${next.request_status}`,
+        });
+      }
     }
 
-    res.status(200).json({ success: true, data: updated[0] });
+    await syncVehicleStatus(current, next);
+
+    res.status(200).json({ success: true, data: next });
   } catch (error) {
     console.error(`Error updating request with id ${id}:`, error);
     res.status(500).json({ error: "Internal Server Error" });
