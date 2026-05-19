@@ -13,6 +13,7 @@ import {
     updateCompanyService,
     deleteCompanyService,
 } from '../controllers/companyServicesController.js';
+import { getCompanyReviews, getCompanyRating } from '../controllers/reviewsController.js';
 
 const router = express.Router();
 
@@ -25,6 +26,10 @@ router.get('/:id/services', getCompanyServices);
 router.post('/:id/services', addCompanyService);
 router.put('/:id/services/:service_id', updateCompanyService);
 router.delete('/:id/services/:service_id', deleteCompanyService);
+
+// Reviews and rating
+router.get('/:id/reviews', getCompanyReviews);
+router.get('/:id/rating', getCompanyRating);
 
 router.post('/', createCompany);
 router.put('/:id', updateCompany);

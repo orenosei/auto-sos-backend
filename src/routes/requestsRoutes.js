@@ -27,6 +27,7 @@ import {
   addRequestMessage,
   markMessageSeen,
 } from "../controllers/requestMessagesController.js";
+import { addReview } from "../controllers/reviewsController.js";
 
 const router = express.Router();
 
@@ -52,6 +53,9 @@ router.delete("/:id/images/:image_id", deleteRequestImage);
 router.get("/:id/messages", getRequestMessages);
 router.post("/:id/messages", addRequestMessage);
 router.put("/:id/messages/:message_id/seen", markMessageSeen);
+
+// Request review
+router.post('/:id/review', addReview);
 
 // POST /requests
 router.post("/", createRequest);

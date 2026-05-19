@@ -8,6 +8,7 @@ import authRoutes from './routes/authRoutes.js';
 import servicesRoutes from './routes/servicesRoutes.js';
 import vehiclesRoutes from './routes/vehiclesRoutes.js';
 import requestsRoutes from './routes/requestsRoutes.js';
+import notificationsRoutes from './routes/notificationsRoutes.js';
 
 dotenv.config();
 
@@ -28,6 +29,7 @@ app.use('/api/companies', companiesRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/vehicles', vehiclesRoutes);
 app.use('/api/requests', requestsRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 
 app.listen(PORT, () => {
