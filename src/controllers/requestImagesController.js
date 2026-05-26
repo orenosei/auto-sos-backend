@@ -5,6 +5,7 @@ import { sql } from "../config/db.js";
 const CLOUDINARY_UPLOAD_FOLDER = "auto-sos/requests";
 const ALLOWED_UPLOAD_FOLDERS = new Set([
   "auto-sos/requests",
+  "auto-sos/community",
   "auto-sos/avatars",
   "auto-sos/company-documents",
 ]);
