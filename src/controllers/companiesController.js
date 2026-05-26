@@ -30,8 +30,10 @@ const COMPANY_SELECT = `
   relative_address,
   ST_AsGeoJSON(absolute_address::geometry) as absolute_address,
   company_phone,
+  avatar_url,
   rescue_area,
   company_license,
+  verification_document_urls,
   is_verified,
   registered_at
 `;
@@ -43,8 +45,10 @@ const COMPANY_SELECT_QUALIFIED = `
   companies.relative_address,
   ST_AsGeoJSON(companies.absolute_address::geometry) as absolute_address,
   companies.company_phone,
+  companies.avatar_url,
   companies.rescue_area,
   companies.company_license,
+  companies.verification_document_urls,
   companies.is_verified,
   companies.registered_at
 `;
@@ -58,17 +62,7 @@ export const getAllCompanies = async (req, res) => {
           COALESCE(r.avg_rating, NULL) AS average_rating,
           COALESCE(r.count_reviews, NULL) AS review_count,
           COALESCE(resp.avg_response_minutes, NULL) AS avg_response_minutes,
-          COALESCE((
-            SELECT json_agg(json_build_object(
-              'service_id', s.service_id,
-              'service_name', s.service_name,
-              'service_description', s.service_description,
-              'service_price', cs.service_price
-            ) ORDER BY s.service_name)
-            FROM company_services cs
-            JOIN services s ON s.service_id = cs.service_id
-            WHERE cs.company_id = companies.company_id
-          ), '[]') AS services
+          COALESCE(svc.services, '[]'::json) AS services
         FROM companies
         LEFT JOIN (
           SELECT req.company_id,
@@ -85,7 +79,19 @@ export const getAllCompanies = async (req, res) => {
           WHERE req.accepted_at IS NOT NULL AND (req.arrived_at IS NOT NULL OR req.completed_at IS NOT NULL)
           GROUP BY req.company_id
         ) resp ON resp.company_id = companies.company_id
-        ORDER BY company_id DESC
+        LEFT JOIN (
+          SELECT cs.company_id,
+                 json_agg(json_build_object(
+                   'service_id', s.service_id,
+                   'service_name', s.service_name,
+                   'service_description', s.service_description,
+                   'service_price', cs.service_price
+                 ) ORDER BY s.service_name) AS services
+          FROM company_services cs
+          JOIN services s ON s.service_id = cs.service_id
+          GROUP BY cs.company_id
+        ) svc ON svc.company_id = companies.company_id
+        ORDER BY companies.company_id DESC
       `
     );
 
@@ -106,17 +112,7 @@ export const getCompanyById = async (req, res) => {
           COALESCE(r.avg_rating, NULL) AS average_rating,
           COALESCE(r.count_reviews, NULL) AS review_count,
           COALESCE(resp.avg_response_minutes, NULL) AS avg_response_minutes,
-          COALESCE((
-            SELECT json_agg(json_build_object(
-              'service_id', s.service_id,
-              'service_name', s.service_name,
-              'service_description', s.service_description,
-              'service_price', cs.service_price
-            ) ORDER BY s.service_name)
-            FROM company_services cs
-            JOIN services s ON s.service_id = cs.service_id
-            WHERE cs.company_id = companies.company_id
-          ), '[]') AS services
+          COALESCE(svc.services, '[]'::json) AS services
         FROM companies
         LEFT JOIN (
           SELECT req.company_id,
@@ -133,7 +129,19 @@ export const getCompanyById = async (req, res) => {
           WHERE req.accepted_at IS NOT NULL AND (req.arrived_at IS NOT NULL OR req.completed_at IS NOT NULL)
           GROUP BY req.company_id
         ) resp ON resp.company_id = companies.company_id
-        WHERE company_id = $1
+        LEFT JOIN (
+          SELECT cs.company_id,
+                 json_agg(json_build_object(
+                   'service_id', s.service_id,
+                   'service_name', s.service_name,
+                   'service_description', s.service_description,
+                   'service_price', cs.service_price
+                 ) ORDER BY s.service_name) AS services
+          FROM company_services cs
+          JOIN services s ON s.service_id = cs.service_id
+          GROUP BY cs.company_id
+        ) svc ON svc.company_id = companies.company_id
+        WHERE companies.company_id = $1
         LIMIT 1
       `,
       [id]
@@ -157,8 +165,10 @@ export const createCompany = async (req, res) => {
     relative_address,
     absolute_address,
     company_phone,
+    avatar_url,
     rescue_area,
     company_license,
+    verification_document_urls,
     is_verified,
   } = req.body;
 
@@ -179,11 +189,13 @@ export const createCompany = async (req, res) => {
           relative_address,
           absolute_address,
           company_phone,
+          avatar_url,
           rescue_area,
           company_license,
+          verification_document_urls,
           is_verified
         )
-        VALUES ($1, $2, $3, ST_GeogFromText($4), $5, $6, $7, $8)
+        VALUES ($1, $2, $3, ST_GeogFromText($4), $5, $6, $7, $8, COALESCE($9::text[], ARRAY[]::text[]), $10)
         RETURNING ${COMPANY_SELECT}
       `,
       [
@@ -192,8 +204,10 @@ export const createCompany = async (req, res) => {
         relative_address ?? null,
         geogText,
         company_phone,
+        avatar_url ?? null,
         rescue_area ?? null,
         company_license ?? null,
+        Array.isArray(verification_document_urls) ? verification_document_urls : [],
         is_verified ?? false,
       ]
     );
@@ -213,8 +227,10 @@ export const updateCompany = async (req, res) => {
     relative_address,
     absolute_address,
     company_phone,
+    avatar_url,
     rescue_area,
     company_license,
+    verification_document_urls,
     is_verified,
   } = req.body;
 
@@ -229,10 +245,12 @@ export const updateCompany = async (req, res) => {
           relative_address = COALESCE($3, relative_address),
           absolute_address = COALESCE(ST_GeogFromText($4), absolute_address),
           company_phone = COALESCE($5, company_phone),
-          rescue_area = COALESCE($6, rescue_area),
-          company_license = COALESCE($7, company_license),
-          is_verified = COALESCE($8, is_verified)
-        WHERE company_id = $9
+          avatar_url = COALESCE($6, avatar_url),
+          rescue_area = COALESCE($7, rescue_area),
+          company_license = COALESCE($8, company_license),
+          verification_document_urls = COALESCE($9::text[], verification_document_urls),
+          is_verified = COALESCE($10, is_verified)
+        WHERE company_id = $11
         RETURNING ${COMPANY_SELECT}
       `,
       [
@@ -241,8 +259,10 @@ export const updateCompany = async (req, res) => {
         relative_address ?? null,
         geogText,
         company_phone ?? null,
+        avatar_url ?? null,
         rescue_area ?? null,
         company_license ?? null,
+        Array.isArray(verification_document_urls) ? verification_document_urls : null,
         is_verified ?? null,
         id,
       ]
@@ -308,26 +328,16 @@ export const getNearbyCompanies = async (req, res) => {
   try {
     const companies = await sql.query(
       `
-        SELECT 
+        SELECT
           ${COMPANY_SELECT_QUALIFIED},
           COALESCE(r.avg_rating, NULL) AS average_rating,
           COALESCE(r.count_reviews, NULL) AS review_count,
           COALESCE(resp.avg_response_minutes, NULL) AS avg_response_minutes,
           ST_DistanceSphere(
             absolute_address::geometry,
-            ST_GeomFromText('POINT(${lon} ${lat})', 4326)
-          ) / 1000.0 as distance_km,
-          COALESCE((
-            SELECT json_agg(json_build_object(
-              'service_id', s.service_id,
-              'service_name', s.service_name,
-              'service_description', s.service_description,
-              'service_price', cs.service_price
-            ) ORDER BY s.service_name)
-            FROM company_services cs
-            JOIN services s ON s.service_id = cs.service_id
-            WHERE cs.company_id = companies.company_id
-          ), '[]') AS services
+            ST_MakePoint($1, $2)
+          ) / 1000.0 AS distance_km,
+          COALESCE(svc.services, '[]'::json) AS services
         FROM companies
         LEFT JOIN (
           SELECT req.company_id,
@@ -344,13 +354,26 @@ export const getNearbyCompanies = async (req, res) => {
           WHERE req.accepted_at IS NOT NULL AND (req.arrived_at IS NOT NULL OR req.completed_at IS NOT NULL)
           GROUP BY req.company_id
         ) resp ON resp.company_id = companies.company_id
+        LEFT JOIN (
+          SELECT cs.company_id,
+                 json_agg(json_build_object(
+                   'service_id', s.service_id,
+                   'service_name', s.service_name,
+                   'service_description', s.service_description,
+                   'service_price', cs.service_price
+                 ) ORDER BY s.service_name) AS services
+          FROM company_services cs
+          JOIN services s ON s.service_id = cs.service_id
+          GROUP BY cs.company_id
+        ) svc ON svc.company_id = companies.company_id
         WHERE ST_DWithin(
           absolute_address::geography,
-          ST_GeogFromText('SRID=4326;POINT(${lon} ${lat})'),
-          ${radius * 1000}
+          ST_MakePoint($1, $2)::geography,
+          $3
         )
         ORDER BY distance_km ASC
-      `
+      `,
+      [lon, lat, radius * 1000]
     );
 
     res.status(200).json({

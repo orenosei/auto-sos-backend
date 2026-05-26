@@ -33,8 +33,10 @@ CREATE TABLE companies (
     relative_address TEXT,
     absolute_address GEOGRAPHY(Point, 4326) NOT NULL,              -- kiểu GEOGRAPHY cho GPS
     company_phone VARCHAR(20) UNIQUE NOT NULL,
+    avatar_url TEXT,
     rescue_area TEXT,                     -- ví dụ: "Quận 1, Quận 3, ..."
     company_license TEXT,                                -- số giấy phép hoặc đường dẫn file
+    verification_document_urls TEXT[] DEFAULT ARRAY[]::TEXT[],
     is_verified BOOLEAN DEFAULT FALSE,
     registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -71,6 +73,9 @@ CREATE TABLE requests (
     relative_location TEXT,
     request_description TEXT,
     issue_type VARCHAR(50),
+    contact_name VARCHAR(100),
+    contact_phone VARCHAR(20),
+    contact_back_now BOOLEAN DEFAULT FALSE,
     priority VARCHAR(20) DEFAULT 'normal',
     request_status request_status_enum DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

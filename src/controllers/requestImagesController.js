@@ -3,6 +3,11 @@ import crypto from "node:crypto";
 import { sql } from "../config/db.js";
 
 const CLOUDINARY_UPLOAD_FOLDER = "auto-sos/requests";
+const ALLOWED_UPLOAD_FOLDERS = new Set([
+  "auto-sos/requests",
+  "auto-sos/avatars",
+  "auto-sos/company-documents",
+]);
 
 const ensureRequestExists = async (requestId) => {
   const rows = await sql.query(
@@ -21,7 +26,7 @@ const buildCloudinarySignature = (params, apiSecret) => {
   return crypto.createHash("sha1").update(baseString + apiSecret).digest("hex");
 };
 
-export const getCloudinarySignature = async (_req, res) => {
+export const getCloudinarySignature = async (req, res) => {
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
   const apiKey = process.env.CLOUDINARY_API_KEY;
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
@@ -31,7 +36,11 @@ export const getCloudinarySignature = async (_req, res) => {
   }
 
   const timestamp = Math.floor(Date.now() / 1000);
-  const folder = CLOUDINARY_UPLOAD_FOLDER;
+  const requestedFolder =
+    typeof req.body?.folder === "string" ? req.body.folder : CLOUDINARY_UPLOAD_FOLDER;
+  const folder = ALLOWED_UPLOAD_FOLDERS.has(requestedFolder)
+    ? requestedFolder
+    : CLOUDINARY_UPLOAD_FOLDER;
   const signature = buildCloudinarySignature({ folder, timestamp }, apiSecret);
 
   return res.status(200).json({

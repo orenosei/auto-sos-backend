@@ -148,53 +148,33 @@ export const updateRequestService = async (req, res) => {
   }
 
   try {
-    const requestOk = await ensureRequestExists(id);
-    if (!requestOk) {
-      return res.status(404).json({ error: "Request not found" });
-    }
-
-    const serviceOk = await ensureServiceExists(service_id);
-    if (!serviceOk) {
-      return res.status(404).json({ error: "Service not found" });
-    }
-
-    const updated = await sql.query(
-      `
-        UPDATE request_services
-        SET
-          service_quantity = COALESCE($3, service_quantity),
-          service_price = COALESCE($4, service_price)
-        WHERE request_id = $1 AND service_id = $2
-        RETURNING request_id, service_id, service_quantity, service_price
-      `,
-      [
-        id,
-        service_id,
-        service_quantity ?? null,
-        service_price ?? null,
-      ]
-    );
-
-    if (updated.length === 0) {
-      return res.status(404).json({ error: "Request service not found" });
-    }
-
+    // Gộp UPDATE + JOIN vào 1 CTE — giảm từ 4 roundtrip xuống còn 1
     const rows = await sql.query(
       `
+        WITH upd AS (
+          UPDATE request_services
+          SET
+            service_quantity = COALESCE($3, service_quantity),
+            service_price = COALESCE($4, service_price)
+          WHERE request_id = $1 AND service_id = $2
+          RETURNING request_id, service_id, service_quantity, service_price
+        )
         SELECT
-          rs.request_id,
+          upd.request_id,
           s.service_id,
           s.service_name,
           s.service_description,
-          rs.service_quantity,
-          rs.service_price
-        FROM request_services rs
-        JOIN services s ON s.service_id = rs.service_id
-        WHERE rs.request_id = $1 AND rs.service_id = $2
-        LIMIT 1
+          upd.service_quantity,
+          upd.service_price
+        FROM upd
+        JOIN services s ON s.service_id = upd.service_id
       `,
-      [id, service_id]
+      [id, service_id, service_quantity ?? null, service_price ?? null]
     );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Request service not found" });
+    }
 
     res.status(200).json({ success: true, data: rows[0] });
   } catch (error) {

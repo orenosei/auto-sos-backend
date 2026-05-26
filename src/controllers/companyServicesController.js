@@ -121,45 +121,30 @@ export const updateCompanyService = async (req, res) => {
   }
 
   try {
-    const companyOk = await ensureCompanyExists(id);
-    if (!companyOk) {
-      return res.status(404).json({ error: "Company not found" });
-    }
-
-    const serviceOk = await ensureServiceExists(service_id);
-    if (!serviceOk) {
-      return res.status(404).json({ error: "Service not found" });
-    }
-
-    const updated = await sql.query(
+    // Gộp UPDATE + JOIN vào 1 CTE — giảm từ 4 roundtrip xuống còn 1
+    const rows = await sql.query(
       `
-        UPDATE company_services
-        SET service_price = $3
-        WHERE company_id = $1 AND service_id = $2
-        RETURNING company_id, service_id, service_price
+        WITH upd AS (
+          UPDATE company_services
+          SET service_price = $3
+          WHERE company_id = $1 AND service_id = $2
+          RETURNING company_id, service_id, service_price
+        )
+        SELECT
+          upd.company_id,
+          s.service_id,
+          s.service_name,
+          s.service_description,
+          upd.service_price
+        FROM upd
+        JOIN services s ON s.service_id = upd.service_id
       `,
       [id, service_id, service_price]
     );
 
-    if (updated.length === 0) {
+    if (rows.length === 0) {
       return res.status(404).json({ error: "Company service not found" });
     }
-
-    const rows = await sql.query(
-      `
-        SELECT
-          cs.company_id,
-          s.service_id,
-          s.service_name,
-          s.service_description,
-          cs.service_price
-        FROM company_services cs
-        JOIN services s ON s.service_id = cs.service_id
-        WHERE cs.company_id = $1 AND cs.service_id = $2
-        LIMIT 1
-      `,
-      [id, service_id]
-    );
 
     res.status(200).json({ success: true, data: rows[0] });
   } catch (error) {

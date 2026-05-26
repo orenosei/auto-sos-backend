@@ -42,8 +42,10 @@ const COMPANY_SELECT = `
   relative_address,
   ST_AsGeoJSON(absolute_address::geometry) as absolute_address,
   company_phone,
+  avatar_url,
   rescue_area,
   company_license,
+  verification_document_urls,
   is_verified,
   registered_at
 `;
@@ -172,8 +174,10 @@ export const registerCompany = async (req, res) => {
     relative_address,
     absolute_address,
     company_phone,
+    avatar_url,
     rescue_area,
     company_license,
+    verification_document_urls,
   } = req.body;
 
   const geogText = toGeogText(absolute_address);
@@ -208,11 +212,13 @@ export const registerCompany = async (req, res) => {
           relative_address,
           absolute_address,
           company_phone,
+          avatar_url,
           rescue_area,
           company_license,
+          verification_document_urls,
           is_verified
         )
-        VALUES ($1, $2, $3, ST_GeogFromText($4), $5, $6, $7, FALSE)
+        VALUES ($1, $2, $3, ST_GeogFromText($4), $5, $6, $7, $8, COALESCE($9::text[], ARRAY[]::text[]), FALSE)
         RETURNING ${COMPANY_SELECT}
       `,
       [
@@ -221,8 +227,10 @@ export const registerCompany = async (req, res) => {
         relative_address ?? null,
         geogText,
         company_phone,
+        avatar_url ?? null,
         rescue_area ?? null,
         company_license ?? null,
+        Array.isArray(verification_document_urls) ? verification_document_urls : [],
       ]
     );
 
@@ -270,8 +278,10 @@ export const loginCompany = async (req, res) => {
       relative_address: row.relative_address,
       absolute_address: row.absolute_address,
       company_phone: row.company_phone,
+      avatar_url: row.avatar_url,
       rescue_area: row.rescue_area,
       company_license: row.company_license,
+      verification_document_urls: row.verification_document_urls,
       is_verified: row.is_verified,
       registered_at: row.registered_at,
     };
