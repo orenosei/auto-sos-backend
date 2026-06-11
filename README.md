@@ -16,15 +16,6 @@ RescueSOS là nền tảng kết nối người gặp sự cố phương tiện 
 - **Cơ sở dữ liệu:** PostgreSQL, PostGIS, Neon Serverless.
 - **Lưu trữ tệp:** Cloudinary.
 
-## Cấu trúc dự án
-
-```text
-RescueSOS/
-├── RescueSOS-FE/    # Giao diện người dùng
-├── RescueSOS-BE/    # REST API và xử lý nghiệp vụ
-└── README.md
-```
-
 ## Cài đặt và chạy dự án
 
 ### 1. Yêu cầu
@@ -74,7 +65,7 @@ npm run dev
 
 Frontend mặc định chạy tại `http://localhost:5173` và chuyển tiếp các yêu cầu `/api` tới backend tại `http://localhost:5001`.
 
-## Thành viên nhóm 5
+## Thành viên nhóm thực hiện dự án
 
 | Họ và tên | Mã sinh viên |
 |---|---|
