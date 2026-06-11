@@ -1,15 +1,8 @@
-import { sql } from "../config/db.js";
+import { findAllServices } from "../repositories/serviceRepository.js";
 
 export const getAllServices = async (req, res) => {
   try {
-    const services = await sql.query(
-      `
-        SELECT service_id, service_name, service_description
-        FROM services
-        ORDER BY service_name ASC
-      `
-    );
-
+    const services = await findAllServices();
     res.status(200).json({ success: true, data: services });
   } catch (error) {
     console.error("Error fetching services:", error);

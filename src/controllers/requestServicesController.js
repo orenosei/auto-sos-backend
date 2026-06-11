@@ -1,52 +1,25 @@
-import { sql } from "../config/db.js";
-
-const isPositiveInteger = (value) =>
-  typeof value === "number" && Number.isInteger(value) && value > 0;
-
-const isNonNegativeNumber = (value) =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0;
-
-const ensureRequestExists = async (requestId) => {
-  const rows = await sql.query(
-    "SELECT 1 FROM requests WHERE request_id = $1 LIMIT 1",
-    [requestId]
-  );
-  return rows.length > 0;
-};
-
-const ensureServiceExists = async (serviceId) => {
-  const rows = await sql.query(
-    "SELECT 1 FROM services WHERE service_id = $1 LIMIT 1",
-    [serviceId]
-  );
-  return rows.length > 0;
-};
+import {
+  requestExists,
+  serviceExists,
+} from "../repositories/entityRepository.js";
+import {
+  deleteRequestServiceById,
+  findRequestServices,
+  updateRequestServiceById,
+  upsertRequestService,
+} from "../repositories/requestServiceRepository.js";
+import { isNonNegativeNumber, isPositiveInteger } from "../utils/validators.js";
 
 export const getRequestServices = async (req, res) => {
   const { id } = req.params;
 
   try {
-    const requestOk = await ensureRequestExists(id);
+    const requestOk = await requestExists(id);
     if (!requestOk) {
       return res.status(404).json({ error: "Request not found" });
     }
 
-    const rows = await sql.query(
-      `
-        SELECT
-          rs.request_id,
-          s.service_id,
-          s.service_name,
-          s.service_description,
-          rs.service_quantity,
-          rs.service_price
-        FROM request_services rs
-        JOIN services s ON s.service_id = rs.service_id
-        WHERE rs.request_id = $1
-        ORDER BY s.service_name ASC
-      `,
-      [id]
-    );
+    const rows = await findRequestServices(id);
 
     res.status(200).json({ success: true, data: rows });
   } catch (error) {
@@ -79,46 +52,23 @@ export const addRequestService = async (req, res) => {
   }
 
   try {
-    const requestOk = await ensureRequestExists(id);
+    const requestOk = await requestExists(id);
     if (!requestOk) {
       return res.status(404).json({ error: "Request not found" });
     }
 
-    const serviceOk = await ensureServiceExists(service_id);
+    const serviceOk = await serviceExists(service_id);
     if (!serviceOk) {
       return res.status(404).json({ error: "Service not found" });
     }
 
-    const rows = await sql.query(
-      `
-        WITH upsert AS (
-          INSERT INTO request_services (
-            request_id,
-            service_id,
-            service_quantity,
-            service_price
-          )
-          VALUES ($1, $2, $3, $4)
-          ON CONFLICT (request_id, service_id)
-          DO UPDATE SET
-            service_quantity = EXCLUDED.service_quantity,
-            service_price = EXCLUDED.service_price
-          RETURNING request_id, service_id, service_quantity, service_price
-        )
-        SELECT
-          u.request_id,
-          s.service_id,
-          s.service_name,
-          s.service_description,
-          u.service_quantity,
-          u.service_price
-        FROM upsert u
-        JOIN services s ON s.service_id = u.service_id
-      `,
-      [id, service_id, service_quantity, service_price]
-    );
+    const row = await upsertRequestService(id, {
+      service_id,
+      service_quantity,
+      service_price,
+    });
 
-    res.status(201).json({ success: true, data: rows[0] });
+    res.status(201).json({ success: true, data: row });
   } catch (error) {
     console.error(`Error adding service to request ${id}:`, error);
     res.status(500).json({ error: "Internal Server Error" });
@@ -148,35 +98,16 @@ export const updateRequestService = async (req, res) => {
   }
 
   try {
-    // Gộp UPDATE + JOIN vào 1 CTE — giảm từ 4 roundtrip xuống còn 1
-    const rows = await sql.query(
-      `
-        WITH upd AS (
-          UPDATE request_services
-          SET
-            service_quantity = COALESCE($3, service_quantity),
-            service_price = COALESCE($4, service_price)
-          WHERE request_id = $1 AND service_id = $2
-          RETURNING request_id, service_id, service_quantity, service_price
-        )
-        SELECT
-          upd.request_id,
-          s.service_id,
-          s.service_name,
-          s.service_description,
-          upd.service_quantity,
-          upd.service_price
-        FROM upd
-        JOIN services s ON s.service_id = upd.service_id
-      `,
-      [id, service_id, service_quantity ?? null, service_price ?? null]
-    );
+    const row = await updateRequestServiceById(id, service_id, {
+      service_quantity,
+      service_price,
+    });
 
-    if (rows.length === 0) {
+    if (!row) {
       return res.status(404).json({ error: "Request service not found" });
     }
 
-    res.status(200).json({ success: true, data: rows[0] });
+    res.status(200).json({ success: true, data: row });
   } catch (error) {
     console.error(`Error updating service ${service_id} for request ${id}:`, error);
     res.status(500).json({ error: "Internal Server Error" });
@@ -187,30 +118,23 @@ export const deleteRequestService = async (req, res) => {
   const { id, service_id } = req.params;
 
   try {
-    const requestOk = await ensureRequestExists(id);
+    const requestOk = await requestExists(id);
     if (!requestOk) {
       return res.status(404).json({ error: "Request not found" });
     }
 
-    const serviceOk = await ensureServiceExists(service_id);
+    const serviceOk = await serviceExists(service_id);
     if (!serviceOk) {
       return res.status(404).json({ error: "Service not found" });
     }
 
-    const deleted = await sql.query(
-      `
-        DELETE FROM request_services
-        WHERE request_id = $1 AND service_id = $2
-        RETURNING request_id, service_id, service_quantity, service_price
-      `,
-      [id, service_id]
-    );
+    const deleted = await deleteRequestServiceById(id, service_id);
 
-    if (deleted.length === 0) {
+    if (!deleted) {
       return res.status(404).json({ error: "Request service not found" });
     }
 
-    res.status(200).json({ success: true, data: deleted[0] });
+    res.status(200).json({ success: true, data: deleted });
   } catch (error) {
     console.error(`Error deleting service ${service_id} for request ${id}:`, error);
     res.status(500).json({ error: "Internal Server Error" });
