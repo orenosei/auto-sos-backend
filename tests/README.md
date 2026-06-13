@@ -37,7 +37,30 @@ Báo cáo HTML coverage được tạo tại:
 coverage/index.html
 ```
 
-## 2. Cấu Trúc Thư Mục
+## 2. Công Nghệ Và Công Cụ Sử Dụng
+
+| Công nghệ/công cụ | Vai trò trong kiểm thử |
+| --- | --- |
+| Node.js | Runtime chạy backend và test suite |
+| Express | Framework backend được kiểm thử ở tầng API route |
+| Vitest | Test runner chính cho unit, API và integration test |
+| `vi.mock` / `vi.fn` | Mock repository, service, dependency và spy function call |
+| Supertest | Gửi HTTP request giả lập tới Express `app` thật |
+| `@vitest/coverage-v8` | Sinh báo cáo coverage bằng V8 coverage engine |
+| Neon/Postgres | Database thật dùng cho repository integration test |
+| PostGIS | Hỗ trợ dữ liệu địa lý/geography trong schema và repository test |
+| dotenv | Load biến môi trường test từ `.env`, gồm `TEST_DATABASE_URL` |
+| bcryptjs | Được dùng trong auth flow, có test login/hash/compare |
+| Node built-in modules | Dùng trong test/service: `crypto`, `fs/promises`, `process.hrtime` |
+
+Các công cụ này được chia theo từng tầng:
+
+- Unit test dùng `Vitest`, `vi.mock`, `vi.fn`.
+- API route test dùng `Vitest` + `Supertest`.
+- Integration test dùng `Vitest` + Neon/Postgres thật.
+- Coverage dùng `@vitest/coverage-v8`.
+
+## 3. Cấu Trúc Thư Mục
 
 ```text
 tests/
@@ -74,7 +97,7 @@ Helper tạo mock Express response:
 
 Helper này được dùng trong unit test controller/middleware để giảm lặp code.
 
-## 3. Các Lệnh Chạy Test
+## 4. Các Lệnh Chạy Test
 
 Chạy unit test:
 
@@ -112,12 +135,12 @@ Chạy watch mode khi phát triển:
 npm run test:watch
 ```
 
-## 4. Unit Test
+## 5. Unit Test
 
 Unit test kiểm tra logic trong từng module riêng lẻ, không gọi database thật.
 Repository và service được mock bằng `vi.mock`.
 
-### 4.1 Utils
+### 5.1 Utils
 
 File:
 
@@ -142,7 +165,7 @@ Phạm vi:
   - Chấp nhận số hữu hạn >= 0.
   - Từ chối số âm, `NaN`, `Infinity`, string.
 
-### 4.2 Middlewares
+### 5.2 Middlewares
 
 File:
 
@@ -169,7 +192,7 @@ Phạm vi:
   - Trong môi trường khác, đăng ký listener `finish`.
   - Khi response finish, log method, URL, status code và duration.
 
-### 4.3 Controllers
+### 5.3 Controllers
 
 File:
 
@@ -330,7 +353,7 @@ File:
 - Create/update/delete user.
 - Repository error -> `500` với services.
 
-### 4.4 Services
+### 5.4 Services
 
 File:
 
@@ -355,7 +378,7 @@ Phạm vi:
   - File thiếu (`ENOENT`) -> trả `[]`.
   - Lỗi đọc file bất thường -> rethrow.
 
-## 5. API Route Test
+## 6. API Route Test
 
 File:
 
@@ -403,7 +426,7 @@ mở socket nội bộ. Trên máy local thông thường có thể chạy trự
 npm run test:api
 ```
 
-## 6. Repository Integration Test
+## 7. Repository Integration Test
 
 File:
 
@@ -426,7 +449,7 @@ Chạy:
 npm run test:integration
 ```
 
-### 6.1 Auth + Entity Repositories
+### 7.1 Auth + Entity Repositories
 
 Phạm vi:
 
@@ -437,7 +460,7 @@ Phạm vi:
 - Lấy user auth row có `password_hash`.
 - Kiểm tra `userExists`, `companyExists`.
 
-### 6.2 Service + Company Service + Vehicle
+### 7.2 Service + Company Service + Vehicle
 
 Phạm vi:
 
@@ -451,7 +474,7 @@ Phạm vi:
 - `vehicleExists`.
 - `vehicleBelongsToCompany`.
 
-### 6.3 Request + Message + Notification + Vehicle Status
+### 7.3 Request + Message + Notification + Vehicle Status
 
 Phạm vi:
 
@@ -471,7 +494,7 @@ Phạm vi:
 - Sync vehicle status sang `busy`.
 - Delete request.
 
-### 6.4 Company Aggregate + Images + Reviews + Constraint
+### 7.4 Company Aggregate + Images + Reviews + Constraint
 
 Phạm vi:
 
@@ -487,7 +510,7 @@ Phạm vi:
 - Kiểm tra duplicate user constraint trả code `23505`.
 - Delete request image.
 
-### 6.5 Community Repository
+### 7.5 Community Repository
 
 Phạm vi:
 
@@ -510,7 +533,7 @@ Phạm vi:
 - Update post status.
 - Update comment status.
 
-## 7. Coverage
+## 8. Coverage
 
 Coverage cấu hình trong `vitest.config.js`:
 
@@ -526,35 +549,14 @@ Coverage cấu hình trong `vitest.config.js`:
   - `src/repositories/**`
   - `src/server.js`
 
-Lý do exclude repositories trong coverage mặc định:
 
-- Unit/API test mock repository.
-- Repository được kiểm tra bằng DB integration test riêng.
-- Nếu tính repository vào coverage của unit/API thì số liệu tổng bị kéo thấp,
-  không phản ánh đúng mục tiêu từng suite.
-
-Kết quả coverage gần nhất:
-
-```text
-All files     84.83% statements/lines
-Branches      66.15%
-Functions     100%
-src/middlewares 100%
-src/services  100%
-```
-
-Một số điểm còn thấp:
-
-- `text.js`: mới được phủ gián tiếp qua community controller, chưa có unit test riêng.
-- Một số nhánh lỗi `500` ở controller/API level chưa được phủ hết.
-
-## 8. Kết Quả Chạy Gần Nhất
+## 9. Kết Quả Chạy Gần Nhất
 
 Unit:
 
 ```text
 npm test
-Test Files  18 passed
+Test Files  21 passed
 Tests       100 passed
 ```
 
@@ -578,7 +580,7 @@ Coverage:
 
 ```text
 npm run test:coverage
-Test Files  19 passed
+Test Files  22 passed
 Tests       113 passed
 Coverage    84.83%
 ```
