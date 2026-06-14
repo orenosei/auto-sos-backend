@@ -93,6 +93,11 @@ export const findCompanyById = async (id) => {
   return rows[0] ?? null;
 };
 
+export const findCompanyPasswordById = async (id) => {
+  const rows = await sql.query("SELECT company_id, password_hash FROM companies WHERE company_id = $1", [id]);
+  return rows[0] ?? null;
+};
+
 export const insertCompany = async ({
   company_name,
   password_hash,
@@ -191,6 +196,19 @@ export const deleteCompanyById = async (id) => {
   const rows = await sql.query(
     `DELETE FROM companies WHERE company_id = $1 RETURNING ${COMPANY_SELECT}`,
     [id]
+  );
+  return rows[0] ?? null;
+};
+
+export const updateCompanyPasswordHash = async (id, password_hash) => {
+  const rows = await sql.query(
+    `
+      UPDATE companies
+      SET password_hash = $1
+      WHERE company_id = $2
+      RETURNING ${COMPANY_SELECT}
+    `,
+    [password_hash, id]
   );
   return rows[0] ?? null;
 };

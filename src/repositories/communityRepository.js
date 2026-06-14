@@ -35,7 +35,7 @@ const COMMENT_SELECT = `
   (SELECT COUNT(*)::int FROM comment_likes cl WHERE cl.comment_id = c.comment_id) AS likes_count
 `;
 
-export const findPosts = async ({ category, q, userId }) => {
+export const findPosts = async ({ category, q, userId, authorUserId }) => {
   const values = [];
   const where = ["p.post_status = 'published'"];
 
@@ -47,6 +47,11 @@ export const findPosts = async ({ category, q, userId }) => {
   if (q) {
     values.push(`%${q}%`);
     where.push(`(p.post_title ILIKE $${values.length} OR p.post_content ILIKE $${values.length})`);
+  }
+
+  if (authorUserId) {
+    values.push(authorUserId);
+    where.push(`p.user_id = $${values.length}`);
   }
 
   values.push(userId ?? null);
@@ -119,6 +124,11 @@ export const insertPostImage = async (postId, imageUrl) => {
   await sql.query("INSERT INTO post_images (post_id, image_url) VALUES ($1, $2)", [postId, imageUrl]);
 };
 
+export const replacePostImages = async (postId, imageUrls) => {
+  await sql.query("DELETE FROM post_images WHERE post_id = $1", [postId]);
+  await Promise.all(imageUrls.map((imageUrl) => insertPostImage(postId, imageUrl)));
+};
+
 export const upsertTag = async (tag) => {
   const rows = await sql.query(
     `
@@ -141,6 +151,34 @@ export const linkPostTag = async (postId, tagId) => {
     `,
     [postId, tagId]
   );
+};
+
+export const replacePostTags = async (postId, tags) => {
+  await sql.query("DELETE FROM post_tags WHERE post_id = $1", [postId]);
+  for (const tag of tags) {
+    const tagId = await upsertTag(tag);
+    await linkPostTag(postId, tagId);
+  }
+};
+
+export const findPostOwner = async (postId) => {
+  const rows = await sql.query("SELECT post_id, user_id, post_status FROM posts WHERE post_id = $1", [postId]);
+  return rows[0] ?? null;
+};
+
+export const updatePostByOwner = async ({ postId, userId, title, content, category }) => {
+  const rows = await sql.query(
+    `
+      UPDATE posts
+      SET post_title = $3,
+          post_content = $4,
+          category = $5
+      WHERE post_id = $1 AND user_id = $2 AND post_status = 'published'
+      RETURNING post_id
+    `,
+    [postId, userId, title, content, category]
+  );
+  return rows[0] ?? null;
 };
 
 export const insertComment = async ({ postId, userId, content }) => {

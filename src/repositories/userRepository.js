@@ -21,6 +21,11 @@ export const findUserById = async (id) => {
   return rows[0] ?? null;
 };
 
+export const findUserPasswordById = async (id) => {
+  const rows = await sql.query("SELECT user_id, password_hash FROM users WHERE user_id = $1", [id]);
+  return rows[0] ?? null;
+};
+
 export const insertUser = async ({
   user_name,
   password_hash,
@@ -105,5 +110,18 @@ export const updateUserById = async (
 
 export const deleteUserById = async (id) => {
   const rows = await sql.query(`DELETE FROM users WHERE user_id = $1 RETURNING ${USER_SELECT}`, [id]);
+  return rows[0] ?? null;
+};
+
+export const updateUserPasswordHash = async (id, password_hash) => {
+  const rows = await sql.query(
+    `
+      UPDATE users
+      SET password_hash = $1
+      WHERE user_id = $2
+      RETURNING ${USER_SELECT}
+    `,
+    [password_hash, id]
+  );
   return rows[0] ?? null;
 };

@@ -1,11 +1,15 @@
+import bcrypt from "bcryptjs";
+
 import {
   deleteCompanyById,
   findAllCompanies,
   findCompanyById,
+  findCompanyPasswordById,
   findCompanyRatingsByIds,
   findNearbyCompanies,
   insertCompany,
   updateCompanyById,
+  updateCompanyPasswordHash,
 } from "../repositories/companyRepository.js";
 import { toGeogText } from "../utils/geo.js";
 
@@ -69,6 +73,43 @@ export const updateCompany = async (req, res) => {
     res.status(200).json({ success: true, data: updatedCompany });
   } catch (error) {
     console.error(`Error updating company with id ${id}:`, error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const changeCompanyPassword = async (req, res) => {
+  const { id } = req.params;
+  const currentPassword = req.body.current_password ?? req.body.currentPassword;
+  const newPassword = req.body.new_password ?? req.body.newPassword;
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({
+      error: "Vui lòng nhập mật khẩu hiện tại và mật khẩu mới",
+    });
+  }
+
+  if (String(newPassword).length < 6) {
+    return res.status(400).json({
+      error: "Mật khẩu mới phải có ít nhất 6 ký tự",
+    });
+  }
+
+  try {
+    const company = await findCompanyPasswordById(id);
+    if (!company) {
+      return res.status(404).json({ error: "Company not found" });
+    }
+
+    const ok = await bcrypt.compare(currentPassword, company.password_hash);
+    if (!ok) {
+      return res.status(401).json({ error: "Mật khẩu hiện tại không đúng" });
+    }
+
+    const password_hash = await bcrypt.hash(newPassword, 10);
+    const updated = await updateCompanyPasswordHash(id, password_hash);
+    res.status(200).json({ success: true, data: updated });
+  } catch (error) {
+    console.error(`Error changing password for company with id ${id}:`, error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };

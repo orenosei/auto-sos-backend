@@ -16,9 +16,10 @@ export const findCompanyReviews = async (companyId) => {
   return sql.query(
     `
       SELECT r.review_id, r.request_id, r.review_rating, r.review_comment, r.reviewed_at,
-             req.user_id
+             req.user_id, u.full_name, u.user_name, u.avatar_url
       FROM reviews r
       JOIN requests req ON req.request_id = r.request_id
+      LEFT JOIN users u ON u.user_id = req.user_id
       WHERE req.company_id = $1
       ORDER BY r.reviewed_at DESC
     `,

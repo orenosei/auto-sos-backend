@@ -4,6 +4,7 @@ import { getAllCompanies,
     getCompanyById, 
     createCompany, 
     updateCompany, 
+    changeCompanyPassword,
     deleteCompany,
     getNearbyCompanies,
     getCompaniesRatings } from '../controllers/companiesController.js';
@@ -34,6 +35,7 @@ router.get('/:id/reviews', getCompanyReviews);
 router.get('/:id/rating', getCompanyRating);
 
 router.post('/', createCompany);
+router.put('/:id/password', changeCompanyPassword);
 router.put('/:id', updateCompany);
 router.delete('/:id', deleteCompany);
 

@@ -6,15 +6,19 @@ import {
   findPosts,
   findPublishedCommentsByPostId,
   findPublishedPostById,
+  findPostOwner,
   insertComment,
   insertContentReport,
   insertPost,
   insertPostImage,
   linkPostTag,
+  replacePostImages,
+  replacePostTags,
   toggleCommentLikeByUser,
   togglePostLikeByUser,
   updateCommentStatusById,
   updateContentReportStatus,
+  updatePostByOwner,
   updatePostStatusById,
   upsertTag,
 } from "../repositories/communityRepository.js";
@@ -61,14 +65,75 @@ const toCommentPayload = (row) => ({
 });
 
 export const getPosts = async (req, res) => {
-  const { category, q, user_id } = req.query;
+  const { category, q, user_id, author_user_id } = req.query;
 
   try {
-    const rows = await findPosts({ category, q, userId: user_id });
+    const rows = await findPosts({ category, q, userId: user_id, authorUserId: author_user_id });
 
     res.status(200).json({ success: true, data: rows.map(toPostPayload) });
   } catch (error) {
     console.error("Error fetching community posts:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const updatePost = async (req, res) => {
+  const { id } = req.params;
+  const userId = req.body?.user_id;
+  const title = normalizeText(req.body?.title ?? req.body?.post_title);
+  const content = normalizeText(req.body?.content ?? req.body?.post_content);
+  const category = normalizeText(req.body?.category) || "Kinh nghiệm";
+  const tags = toArray(req.body?.tags).map((tag) => tag.toLocaleLowerCase("vi-VN")).slice(0, 10);
+  const imageUrls = toArray(req.body?.image_urls ?? req.body?.images).slice(0, 6);
+
+  if (!userId || !title || !content) {
+    return res.status(400).json({ error: "Missing required fields: user_id, title, content" });
+  }
+
+  try {
+    const owner = await findPostOwner(id);
+    if (!owner || owner.post_status !== "published") return res.status(404).json({ error: "Post not found" });
+    if (String(owner.user_id) !== String(userId)) {
+      return res.status(403).json({ error: "You can only edit your own post" });
+    }
+
+    const blockedWords = await findSensitiveWords(title, content);
+    if (blockedWords.length > 0) {
+      return res.status(400).json({
+        error: "Nội dung chứa từ nhạy cảm. Vui lòng chỉnh sửa trước khi lưu.",
+        data: { blockedWords },
+      });
+    }
+
+    await updatePostByOwner({ postId: id, userId, title, content, category });
+    await replacePostImages(id, imageUrls);
+    await replacePostTags(id, tags);
+
+    const detailReq = { params: { id }, query: { user_id: userId } };
+    return getPostById(detailReq, res);
+  } catch (error) {
+    console.error(`Error updating community post ${id}:`, error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const deletePost = async (req, res) => {
+  const { id } = req.params;
+  const userId = req.body?.user_id;
+
+  if (!userId) return res.status(400).json({ error: "Missing required field: user_id" });
+
+  try {
+    const owner = await findPostOwner(id);
+    if (!owner || owner.post_status !== "published") return res.status(404).json({ error: "Post not found" });
+    if (String(owner.user_id) !== String(userId)) {
+      return res.status(403).json({ error: "You can only delete your own post" });
+    }
+
+    const updated = await updatePostStatusById(id, "removed");
+    res.status(200).json({ success: true, data: updated });
+  } catch (error) {
+    console.error(`Error deleting community post ${id}:`, error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
