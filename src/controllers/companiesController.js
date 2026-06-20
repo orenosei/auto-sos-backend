@@ -4,6 +4,7 @@ import {
   deleteCompanyById,
   findAllCompanies,
   findCompanyById,
+  findCompanyCandidates,
   findCompanyPasswordById,
   findCompanyRatingsByIds,
   findNearbyCompanies,
@@ -199,6 +200,109 @@ export const getCompaniesRatings = async (req, res) => {
     res.status(200).json({ success: true, data: map });
   } catch (error) {
     console.error("Error fetching batch company ratings:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+const normalizeCriterion = (value, min, max, higherIsBetter = false) => {
+  if (max === min) return 1;
+  const normalized = (value - min) / (max - min);
+  return higherIsBetter ? normalized : 1 - normalized;
+};
+
+export const recommendCompany = async (req, res) => {
+  const latitude = Number(req.body.latitude);
+  const longitude = Number(req.body.longitude);
+  const serviceId = Number(req.body.service_id);
+
+  if (
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    !Number.isFinite(serviceId)
+  ) {
+    return res.status(400).json({
+      error: "latitude, longitude and service_id are required",
+    });
+  }
+
+  try {
+    const candidates = await findCompanyCandidates({
+      latitude,
+      longitude,
+      serviceId,
+    });
+
+    if (candidates.length === 0) {
+      return res.status(404).json({
+        error: "Không có công ty đã xác minh cung cấp dịch vụ này",
+      });
+    }
+
+    const numeric = candidates.map((row) => ({
+      ...row,
+      distance_km: Number(row.distance_km),
+      avg_response_minutes: Number(row.avg_response_minutes),
+      average_rating: Number(row.average_rating),
+      service_price: Number(row.service_price),
+    }));
+    const range = (key) => ({
+      min: Math.min(...numeric.map((row) => row[key])),
+      max: Math.max(...numeric.map((row) => row[key])),
+    });
+    const ranges = {
+      distance_km: range("distance_km"),
+      avg_response_minutes: range("avg_response_minutes"),
+      average_rating: range("average_rating"),
+      service_price: range("service_price"),
+    };
+
+    const ranked = numeric
+      .map((row) => {
+        const distance = normalizeCriterion(
+          row.distance_km,
+          ranges.distance_km.min,
+          ranges.distance_km.max
+        );
+        const response = normalizeCriterion(
+          row.avg_response_minutes,
+          ranges.avg_response_minutes.min,
+          ranges.avg_response_minutes.max
+        );
+        const rating = normalizeCriterion(
+          row.average_rating,
+          ranges.average_rating.min,
+          ranges.average_rating.max,
+          true
+        );
+        const price = normalizeCriterion(
+          row.service_price,
+          ranges.service_price.min,
+          ranges.service_price.max
+        );
+        const score =
+          distance * 0.35 + response * 0.25 + rating * 0.25 + price * 0.15;
+
+        return {
+          ...row,
+          score: Number(score.toFixed(4)),
+          score_breakdown: { distance, response, rating, price },
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    res.status(200).json({
+      success: true,
+      data: ranked[0],
+      alternatives: ranked.slice(1, 4),
+      weights: {
+        distance: 0.35,
+        response: 0.25,
+        rating: 0.25,
+        price: 0.15,
+      },
+    });
+  } catch (error) {
+    console.error("Error recommending company:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };

@@ -6,6 +6,7 @@ const companyRepository = vi.hoisted(() => ({
   deleteCompanyById: vi.fn(),
   findAllCompanies: vi.fn(),
   findCompanyById: vi.fn(),
+  findCompanyCandidates: vi.fn(),
   findCompanyRatingsByIds: vi.fn(),
   findNearbyCompanies: vi.fn(),
   insertCompany: vi.fn(),
@@ -21,6 +22,7 @@ const {
   getCompaniesRatings,
   getCompanyById,
   getNearbyCompanies,
+  recommendCompany,
   updateCompany,
 } = await import("../../../src/controllers/companiesController.js");
 
@@ -131,5 +133,47 @@ describe("companiesController", () => {
       success: true,
       data: { 1: { average_rating: 4.5, review_count: 2 } },
     });
+  });
+
+  it("ranks verified service candidates using multiple criteria", async () => {
+    companyRepository.findCompanyCandidates.mockResolvedValue([
+      {
+        company_id: 1,
+        company_name: "Gần",
+        distance_km: "2",
+        avg_response_minutes: "10",
+        average_rating: "4.8",
+        service_price: "200000",
+      },
+      {
+        company_id: 2,
+        company_name: "Xa",
+        distance_km: "10",
+        avg_response_minutes: "25",
+        average_rating: "4",
+        service_price: "300000",
+      },
+    ]);
+    const res = createMockResponse();
+
+    await recommendCompany(
+      {
+        body: { latitude: 21, longitude: 105, service_id: 3 },
+      },
+      res
+    );
+
+    expect(companyRepository.findCompanyCandidates).toHaveBeenCalledWith({
+      latitude: 21,
+      longitude: 105,
+      serviceId: 3,
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({ company_id: 1 }),
+      })
+    );
   });
 });

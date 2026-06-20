@@ -253,3 +253,51 @@ export const findCompanyRatingsByIds = async (ids) => {
     [ids]
   );
 };
+
+export const findCompanyCandidates = async ({
+  longitude,
+  latitude,
+  serviceId,
+}) => {
+  return sql.query(
+    `
+      SELECT
+        c.company_id,
+        c.company_name,
+        c.company_phone,
+        cs.service_price,
+        ST_DistanceSphere(
+          c.absolute_address::geometry,
+          ST_MakePoint($1, $2)
+        ) / 1000.0 AS distance_km,
+        COALESCE(r.average_rating, 3) AS average_rating,
+        COALESCE(resp.avg_acceptance_minutes, 30) AS avg_response_minutes
+      FROM companies c
+      JOIN company_services cs
+        ON cs.company_id = c.company_id
+       AND cs.service_id = $3
+      LEFT JOIN (
+        SELECT
+          req.company_id,
+          ROUND(AVG(rv.review_rating)::numeric, 2) AS average_rating
+        FROM requests req
+        JOIN reviews rv ON rv.request_id = req.request_id
+        GROUP BY req.company_id
+      ) r ON r.company_id = c.company_id
+      LEFT JOIN (
+        SELECT
+          company_id,
+          ROUND(
+            AVG(EXTRACT(EPOCH FROM (accepted_at - created_at)) / 60)::numeric,
+            1
+          ) AS avg_acceptance_minutes
+        FROM requests
+        WHERE accepted_at IS NOT NULL
+        GROUP BY company_id
+      ) resp ON resp.company_id = c.company_id
+      WHERE c.is_verified = TRUE
+      ORDER BY distance_km ASC
+    `,
+    [longitude, latitude, serviceId]
+  );
+};
