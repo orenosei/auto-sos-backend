@@ -36,7 +36,7 @@ import {
 
 const router = express.Router();
 
-// GET /requests?user_id=... or ?company_id=... (&request_status=...)
+// GET /requests?user_id=..., ?company_id=..., or ?all=true (&request_status=...)
 router.get("/", getRequests);
 
 // GET /requests/:id

@@ -161,6 +161,10 @@ export const loginCompany = async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
+    if (!row.is_active) {
+      return res.status(403).json({ error: "Công ty đã bị quản trị viên khóa" });
+    }
+
     const company = {
       company_id: row.company_id,
       company_name: row.company_name,
@@ -172,6 +176,7 @@ export const loginCompany = async (req, res) => {
       company_license: row.company_license,
       verification_document_urls: row.verification_document_urls,
       is_verified: row.is_verified,
+      is_active: row.is_active,
       registered_at: row.registered_at,
     };
 
@@ -180,4 +185,88 @@ export const loginCompany = async (req, res) => {
     console.error("Error logging in company:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
+};
+
+export const loginAccount = async (req, res) => {
+  const { identifier, password } = req.body;
+
+  if (!identifier || !password) {
+    return res.status(400).json({
+      error: "Missing required fields: identifier, password",
+    });
+  }
+
+  try {
+    const [userRow, companyRow] = await Promise.all([
+      findUserAuthByIdentifier(identifier),
+      findCompanyAuthByIdentifier(identifier),
+    ]);
+
+    if (userRow && userRow.user_role !== "admin") {
+      const userPasswordMatches = await bcrypt.compare(password, userRow.password_hash);
+      if (userPasswordMatches) {
+        if (!userRow.is_active) {
+          return res.status(403).json({ error: "Tài khoản đã bị khóa" });
+        }
+
+        const user = {
+          user_id: userRow.user_id,
+          user_name: userRow.user_name,
+          full_name: userRow.full_name,
+          user_phone: userRow.user_phone,
+          user_email: userRow.user_email,
+          avatar_url: userRow.avatar_url,
+          user_role: userRow.user_role,
+          is_active: userRow.is_active,
+          registered_at: userRow.registered_at,
+        };
+        return res.status(200).json({ success: true, role: "user", data: user });
+      }
+    }
+
+    if (companyRow) {
+      const companyPasswordMatches = await bcrypt.compare(password, companyRow.password_hash);
+      if (companyPasswordMatches) {
+        if (!companyRow.is_active) {
+          return res.status(403).json({ error: "Công ty đã bị quản trị viên khóa" });
+        }
+
+        const company = {
+          company_id: companyRow.company_id,
+          company_name: companyRow.company_name,
+          relative_address: companyRow.relative_address,
+          absolute_address: companyRow.absolute_address,
+          company_phone: companyRow.company_phone,
+          avatar_url: companyRow.avatar_url,
+          rescue_area: companyRow.rescue_area,
+          company_license: companyRow.company_license,
+          verification_document_urls: companyRow.verification_document_urls,
+          is_verified: companyRow.is_verified,
+          is_active: companyRow.is_active,
+          registered_at: companyRow.registered_at,
+        };
+        return res.status(200).json({ success: true, role: "company", data: company });
+      }
+    }
+
+    return res.status(401).json({ error: "Tên đăng nhập hoặc mật khẩu không đúng" });
+  } catch (error) {
+    console.error("Error logging in account:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const verifyAdminAccess = (req, res) => {
+  const code = String(req.body?.code ?? "");
+  const configuredCode = process.env.ADMIN_ACCESS_CODE;
+
+  if (!configuredCode) {
+    return res.status(503).json({ error: "Chưa cấu hình mã quản trị viên" });
+  }
+
+  if (code !== configuredCode) {
+    return res.status(401).json({ error: "Mã quản trị viên không đúng" });
+  }
+
+  return res.status(200).json({ success: true });
 };

@@ -67,8 +67,22 @@ describe("requestsController", () => {
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith({
-        error: "Missing required query param: user_id or company_id",
+        error: "Missing required query param: user_id, company_id, or all=true",
       });
+    });
+
+    it("allows admins to request all rows explicitly", async () => {
+      requestRepository.findRequests.mockResolvedValue([{ request_id: 1 }]);
+      const res = createRes();
+
+      await getRequests({ query: { all: "true" } }, res);
+
+      expect(requestRepository.findRequests).toHaveBeenCalledWith({
+        user_id: undefined,
+        company_id: undefined,
+        request_status: undefined,
+      });
+      expect(res.status).toHaveBeenCalledWith(200);
     });
 
     it("rejects invalid status filters", async () => {

@@ -44,11 +44,12 @@ const toEstimatedArrival = (estimatedArrival, etaMinutes) => {
 };
 
 export const getRequests = async (req, res) => {
-  const { user_id, company_id, request_status } = req.query;
+  const { user_id, company_id, request_status, all } = req.query;
+  const requestsAll = all === "true";
 
-  if (!user_id && !company_id) {
+  if (!user_id && !company_id && !requestsAll) {
     return res.status(400).json({
-      error: "Missing required query param: user_id or company_id",
+      error: "Missing required query param: user_id, company_id, or all=true",
     });
   }
 

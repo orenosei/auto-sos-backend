@@ -86,11 +86,20 @@ CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
 
+# Mã dùng để mở trang /admin
+ADMIN_ACCESS_CODE=abc123
+
 # Chỉ cần khi chạy integration test
 # TEST_DATABASE_URL=postgresql://user:password@host/test_database?sslmode=require
 ```
 
 Backend ưu tiên `DATABASE_URL`. Nếu không có `DATABASE_URL`, hệ thống sẽ ghép chuỗi kết nối từ `PGUSER`, `PGPASSWORD`, `PGHOST`, `PGDATABASE`.
+
+Khi nâng cấp cơ sở dữ liệu đã có sẵn, chạy thêm migration trạng thái khóa công ty:
+
+```bash
+psql "<DATABASE_URL>" -f src/config/migrate_20260621_company_active.sql
+```
 
 ### 4. Chạy server
 

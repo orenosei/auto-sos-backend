@@ -23,6 +23,7 @@ const COMPANY_SELECT = `
   company_license,
   verification_document_urls,
   is_verified,
+  is_active,
   registered_at
 `;
 
@@ -120,9 +121,10 @@ export const insertRegisteredCompany = async ({
         rescue_area,
         company_license,
         verification_document_urls,
-        is_verified
+        is_verified,
+        is_active
       )
-      VALUES ($1, $2, $3, ST_GeogFromText($4), $5, $6, $7, $8, COALESCE($9::text[], ARRAY[]::text[]), FALSE)
+      VALUES ($1, $2, $3, ST_GeogFromText($4), $5, $6, $7, $8, COALESCE($9::text[], ARRAY[]::text[]), FALSE, TRUE)
       RETURNING ${COMPANY_SELECT}
     `,
     [

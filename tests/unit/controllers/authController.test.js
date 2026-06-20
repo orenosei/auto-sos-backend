@@ -20,10 +20,12 @@ vi.mock("bcryptjs", () => bcrypt);
 vi.mock("../../../src/repositories/authRepository.js", () => authRepository);
 
 const {
+  loginAccount,
   loginCompany,
   loginUser,
   registerCompany,
   registerUser,
+  verifyAdminAccess,
 } = await import("../../../src/controllers/authController.js");
 
 const createRes = () => {
@@ -221,6 +223,65 @@ describe("authController", () => {
 
       expect(res.status).toHaveBeenCalledWith(401);
       expect(res.json).toHaveBeenCalledWith({ error: "Invalid credentials" });
+    });
+
+    it("blocks an inactive company even when the password is correct", async () => {
+      authRepository.findCompanyAuthByIdentifier.mockResolvedValue({
+        company_id: 1,
+        password_hash: "hash",
+        is_active: false,
+      });
+      const res = createRes();
+
+      await loginCompany({ body: { identifier: "rescue", password: "secret" } }, res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({
+        error: "Công ty đã bị quản trị viên khóa",
+      });
+    });
+  });
+
+  describe("loginAccount", () => {
+    it("automatically detects a company account", async () => {
+      authRepository.findUserAuthByIdentifier.mockResolvedValue(null);
+      authRepository.findCompanyAuthByIdentifier.mockResolvedValue({
+        company_id: 3,
+        company_name: "Rescue",
+        company_phone: "091",
+        password_hash: "hash",
+        is_verified: true,
+        is_active: true,
+      });
+      const res = createRes();
+
+      await loginAccount({ body: { identifier: "Rescue", password: "secret" } }, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          role: "company",
+          data: expect.objectContaining({ company_id: 3 }),
+        })
+      );
+    });
+  });
+
+  describe("verifyAdminAccess", () => {
+    it("accepts only the code configured in the environment", () => {
+      const previousCode = process.env.ADMIN_ACCESS_CODE;
+      process.env.ADMIN_ACCESS_CODE = "abc123";
+
+      const deniedRes = createRes();
+      verifyAdminAccess({ body: { code: "wrong" } }, deniedRes);
+      expect(deniedRes.status).toHaveBeenCalledWith(401);
+
+      const acceptedRes = createRes();
+      verifyAdminAccess({ body: { code: "abc123" } }, acceptedRes);
+      expect(acceptedRes.status).toHaveBeenCalledWith(200);
+
+      process.env.ADMIN_ACCESS_CODE = previousCode;
     });
   });
 });

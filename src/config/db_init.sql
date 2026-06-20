@@ -38,6 +38,7 @@ CREATE TABLE companies (
     company_license TEXT,                                -- số giấy phép hoặc đường dẫn file
     verification_document_urls TEXT[] DEFAULT ARRAY[]::TEXT[],
     is_verified BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
     registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 -- 3. Bảng danh mục dịch vụ cứu hộ (services)
@@ -138,6 +139,7 @@ CREATE TABLE reviews (
 -- Dùng khi nâng cấp một CSDL đã được tạo từ phiên bản cũ.
 ALTER TABLE requests ADD COLUMN IF NOT EXISTS request_note TEXT;
 ALTER TABLE requests ADD COLUMN IF NOT EXISTS assignment_mode VARCHAR(20) DEFAULT 'manual';
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
 
 CREATE TABLE notifications (
     notification_id BIGSERIAL PRIMARY KEY,

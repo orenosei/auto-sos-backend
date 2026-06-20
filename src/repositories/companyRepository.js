@@ -11,6 +11,7 @@ const COMPANY_SELECT = `
   company_license,
   verification_document_urls,
   is_verified,
+  is_active,
   registered_at
 `;
 
@@ -25,6 +26,7 @@ const COMPANY_SELECT_QUALIFIED = `
   companies.company_license,
   companies.verification_document_urls,
   companies.is_verified,
+  companies.is_active,
   companies.registered_at
 `;
 
@@ -156,6 +158,7 @@ export const updateCompanyById = async (
     company_license,
     verification_document_urls,
     is_verified,
+    is_active,
   }
 ) => {
   const rows = await sql.query(
@@ -171,8 +174,9 @@ export const updateCompanyById = async (
         rescue_area = COALESCE($7, rescue_area),
         company_license = COALESCE($8, company_license),
         verification_document_urls = COALESCE($9::text[], verification_document_urls),
-        is_verified = COALESCE($10, is_verified)
-      WHERE company_id = $11
+        is_verified = COALESCE($10, is_verified),
+        is_active = COALESCE($11, is_active)
+      WHERE company_id = $12
       RETURNING ${COMPANY_SELECT}
     `,
     [
@@ -186,6 +190,7 @@ export const updateCompanyById = async (
       company_license ?? null,
       Array.isArray(verification_document_urls) ? verification_document_urls : null,
       is_verified ?? null,
+      typeof is_active === "boolean" ? is_active : null,
       id,
     ]
   );
@@ -233,6 +238,7 @@ export const findNearbyCompanies = async ({ longitude, latitude, radiusMeters })
         ST_MakePoint($1, $2)::geography,
         $3
       )
+      AND companies.is_active = TRUE
       ORDER BY distance_km ASC
     `,
     [longitude, latitude, radiusMeters]
@@ -295,7 +301,7 @@ export const findCompanyCandidates = async ({
         WHERE accepted_at IS NOT NULL
         GROUP BY company_id
       ) resp ON resp.company_id = c.company_id
-      WHERE c.is_verified = TRUE
+      WHERE c.is_verified = TRUE AND c.is_active = TRUE
       ORDER BY distance_km ASC
     `,
     [longitude, latitude, serviceId]
