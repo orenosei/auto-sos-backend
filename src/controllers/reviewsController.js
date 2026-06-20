@@ -1,8 +1,11 @@
 import { getRequestSummary } from "../repositories/entityRepository.js";
 import {
+  deleteReviewByRequestId,
+  findRequestReview,
   findCompanyReviews,
   getCompanyRatingSummary,
   insertReview,
+  updateReviewByRequestId,
 } from "../repositories/reviewRepository.js";
 import { createNotification } from "../services/notificationService.js";
 import { isUniqueViolation } from "../utils/dbErrors.js";
@@ -46,6 +49,50 @@ export const addReview = async (req, res) => {
       return res.status(409).json({ error: 'Review for this request already exists' });
     }
     res.status(500).json({ error: 'Internal Server Error' });
+  }
+};
+
+const isValidRating = (value) =>
+  typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 5;
+
+export const getRequestReview = async (req, res) => {
+  try {
+    const review = await findRequestReview(req.params.id);
+    if (!review) return res.status(404).json({ error: "Review not found" });
+    res.status(200).json({ success: true, data: review });
+  } catch (error) {
+    console.error(`Error fetching review for request ${req.params.id}:`, error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const updateReview = async (req, res) => {
+  const { review_rating, review_comment } = req.body;
+  if (!isValidRating(review_rating)) {
+    return res.status(400).json({ error: "review_rating must be an integer from 1 to 5" });
+  }
+
+  try {
+    const updated = await updateReviewByRequestId(req.params.id, {
+      review_rating,
+      review_comment,
+    });
+    if (!updated) return res.status(404).json({ error: "Review not found" });
+    res.status(200).json({ success: true, data: updated });
+  } catch (error) {
+    console.error(`Error updating review for request ${req.params.id}:`, error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const deleteReview = async (req, res) => {
+  try {
+    const deleted = await deleteReviewByRequestId(req.params.id);
+    if (!deleted) return res.status(404).json({ error: "Review not found" });
+    res.status(200).json({ success: true, data: deleted });
+  } catch (error) {
+    console.error(`Error deleting review for request ${req.params.id}:`, error);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 

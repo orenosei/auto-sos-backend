@@ -72,6 +72,7 @@ CREATE TABLE requests (
     absolute_location GEOGRAPHY(Point, 4326) NOT NULL,
     relative_location TEXT,
     request_description TEXT,
+    request_note TEXT,
     issue_type VARCHAR(50),
     contact_name VARCHAR(100),
     contact_phone VARCHAR(20),
@@ -132,6 +133,9 @@ CREATE TABLE reviews (
     review_comment TEXT,
     reviewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Dùng khi nâng cấp một CSDL đã được tạo từ phiên bản cũ.
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS request_note TEXT;
 
 CREATE TABLE notifications (
     notification_id BIGSERIAL PRIMARY KEY,

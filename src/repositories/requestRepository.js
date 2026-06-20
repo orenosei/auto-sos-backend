@@ -8,6 +8,7 @@ const REQUEST_SELECT = `
   ST_AsGeoJSON(absolute_location::geometry) as absolute_location,
   relative_location,
   request_description,
+  request_note,
   issue_type,
   contact_name,
   contact_phone,
@@ -29,6 +30,8 @@ const REQUEST_SELECT = `
 `;
 
 export const findRequests = async ({ user_id, company_id, request_status }) => {
+  await expirePendingRequests();
+
   const where = [];
   const values = [];
 
@@ -60,6 +63,39 @@ export const findRequests = async ({ user_id, company_id, request_status }) => {
   );
 };
 
+export const expirePendingRequests = async () => {
+  return sql.query(
+    `
+      WITH expired AS (
+        UPDATE requests
+        SET
+          request_status = 'cancelled',
+          cancelled_at = CURRENT_TIMESTAMP,
+          cancelled_by = 'system',
+          cancel_reason = 'Không được tiếp nhận trong vòng 30 phút'
+        WHERE request_status = 'pending'
+          AND created_at <= CURRENT_TIMESTAMP - INTERVAL '30 minutes'
+        RETURNING request_id
+      )
+      INSERT INTO request_status_history (
+        request_id,
+        old_status,
+        new_status,
+        changed_by,
+        note
+      )
+      SELECT
+        request_id,
+        'pending'::request_status_enum,
+        'cancelled'::request_status_enum,
+        'system',
+        'Tự động hủy do không được tiếp nhận trong vòng 30 phút'
+      FROM expired
+      RETURNING request_id
+    `
+  );
+};
+
 export const findRequestById = async (requestId) => {
   const rows = await sql.query(
     `SELECT ${REQUEST_SELECT} FROM requests WHERE request_id = $1 LIMIT 1`,
@@ -88,6 +124,7 @@ export const insertRequest = async ({
   geogText,
   relative_location,
   request_description,
+  request_note,
   issue_type,
   contact_name,
   contact_phone,
@@ -107,6 +144,7 @@ export const insertRequest = async ({
         absolute_location,
         relative_location,
         request_description,
+        request_note,
         issue_type,
         contact_name,
         contact_phone,
@@ -127,12 +165,13 @@ export const insertRequest = async ({
         $7,
         $8,
         $9,
-        COALESCE($10, FALSE),
-        COALESCE($11, 'normal'),
-        COALESCE($12::request_status_enum, 'pending'::request_status_enum),
-        $13,
+        $10,
+        COALESCE($11, FALSE),
+        COALESCE($12, 'normal'),
+        COALESCE($13::request_status_enum, 'pending'::request_status_enum),
         $14,
-        $15
+        $15,
+        $16
       )
       RETURNING ${REQUEST_SELECT}
     `,
@@ -143,6 +182,7 @@ export const insertRequest = async ({
       geogText,
       relative_location ?? null,
       request_description ?? null,
+      request_note ?? null,
       issue_type ?? null,
       contact_name ?? null,
       contact_phone ?? null,
@@ -212,6 +252,7 @@ export const updateRequestById = async (
     geogText,
     relative_location,
     request_description,
+    request_note,
     issue_type,
     contact_name,
     contact_phone,
@@ -247,24 +288,25 @@ export const updateRequestById = async (
         ),
         relative_location = COALESCE($5, relative_location),
         request_description = COALESCE($6, request_description),
-        issue_type = COALESCE($7, issue_type),
-        contact_name = COALESCE($8, contact_name),
-        contact_phone = COALESCE($9, contact_phone),
-        contact_back_now = COALESCE($10, contact_back_now),
-        priority = COALESCE($11, priority),
-        request_status = COALESCE($12::request_status_enum, request_status),
-        estimated_arrival = COALESCE($13, estimated_arrival),
-        accepted_at = COALESCE($14, accepted_at),
-        heading_at = COALESCE($15, heading_at),
-        arrived_at = COALESCE($16, arrived_at),
-        actual_arrival = COALESCE($17, actual_arrival),
-        completed_at = COALESCE($18, completed_at),
-        cancelled_at = COALESCE($19, cancelled_at),
-        cancelled_by = COALESCE($20, cancelled_by),
-        cancel_reason = COALESCE($21, cancel_reason),
-        final_price = COALESCE($22, final_price),
-        user_confirmed_at = COALESCE($23, user_confirmed_at)
-      WHERE request_id = $24
+        request_note = COALESCE($7, request_note),
+        issue_type = COALESCE($8, issue_type),
+        contact_name = COALESCE($9, contact_name),
+        contact_phone = COALESCE($10, contact_phone),
+        contact_back_now = COALESCE($11, contact_back_now),
+        priority = COALESCE($12, priority),
+        request_status = COALESCE($13::request_status_enum, request_status),
+        estimated_arrival = COALESCE($14, estimated_arrival),
+        accepted_at = COALESCE($15, accepted_at),
+        heading_at = COALESCE($16, heading_at),
+        arrived_at = COALESCE($17, arrived_at),
+        actual_arrival = COALESCE($18, actual_arrival),
+        completed_at = COALESCE($19, completed_at),
+        cancelled_at = COALESCE($20, cancelled_at),
+        cancelled_by = COALESCE($21, cancelled_by),
+        cancel_reason = COALESCE($22, cancel_reason),
+        final_price = COALESCE($23, final_price),
+        user_confirmed_at = COALESCE($24, user_confirmed_at)
+      WHERE request_id = $25
       RETURNING ${REQUEST_SELECT}
     `,
     [
@@ -274,6 +316,7 @@ export const updateRequestById = async (
       geogText,
       relative_location ?? null,
       request_description ?? null,
+      request_note ?? null,
       issue_type ?? null,
       contact_name ?? null,
       contact_phone ?? null,

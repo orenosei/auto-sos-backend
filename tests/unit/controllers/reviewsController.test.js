@@ -7,9 +7,12 @@ const entityRepository = vi.hoisted(() => ({
 }));
 
 const reviewRepository = vi.hoisted(() => ({
+  deleteReviewByRequestId: vi.fn(),
+  findRequestReview: vi.fn(),
   findCompanyReviews: vi.fn(),
   getCompanyRatingSummary: vi.fn(),
   insertReview: vi.fn(),
+  updateReviewByRequestId: vi.fn(),
 }));
 
 const notificationService = vi.hoisted(() => ({
@@ -22,8 +25,11 @@ vi.mock("../../../src/services/notificationService.js", () => notificationServic
 
 const {
   addReview,
+  deleteReview,
   getCompanyRating,
   getCompanyReviews,
+  getRequestReview,
+  updateReview,
 } = await import("../../../src/controllers/reviewsController.js");
 
 describe("reviewsController", () => {
@@ -110,5 +116,38 @@ describe("reviewsController", () => {
 
     expect(reviewsRes.json).toHaveBeenCalledWith({ success: true, data: reviews });
     expect(ratingRes.json).toHaveBeenCalledWith({ success: true, data: rating });
+  });
+
+  it("gets, updates, and deletes a request review", async () => {
+    const review = { review_id: 1, request_id: 10, review_rating: 4 };
+    reviewRepository.findRequestReview.mockResolvedValue(review);
+    reviewRepository.updateReviewByRequestId.mockResolvedValue({
+      ...review,
+      review_rating: 5,
+    });
+    reviewRepository.deleteReviewByRequestId.mockResolvedValue(review);
+
+    const getRes = createMockResponse();
+    await getRequestReview({ params: { id: "10" } }, getRes);
+    expect(getRes.status).toHaveBeenCalledWith(200);
+
+    const updateRes = createMockResponse();
+    await updateReview(
+      {
+        params: { id: "10" },
+        body: { review_rating: 5, review_comment: "Rất tốt" },
+      },
+      updateRes
+    );
+    expect(reviewRepository.updateReviewByRequestId).toHaveBeenCalledWith("10", {
+      review_rating: 5,
+      review_comment: "Rất tốt",
+    });
+    expect(updateRes.status).toHaveBeenCalledWith(200);
+
+    const deleteRes = createMockResponse();
+    await deleteReview({ params: { id: "10" } }, deleteRes);
+    expect(reviewRepository.deleteReviewByRequestId).toHaveBeenCalledWith("10");
+    expect(deleteRes.status).toHaveBeenCalledWith(200);
   });
 });

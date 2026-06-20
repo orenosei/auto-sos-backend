@@ -12,6 +12,50 @@ export const insertReview = async (requestId, { review_rating, review_comment })
   return rows[0];
 };
 
+export const findRequestReview = async (requestId) => {
+  const rows = await sql.query(
+    `
+      SELECT review_id, request_id, review_rating, review_comment, reviewed_at
+      FROM reviews
+      WHERE request_id = $1
+      LIMIT 1
+    `,
+    [requestId]
+  );
+  return rows[0] ?? null;
+};
+
+export const updateReviewByRequestId = async (
+  requestId,
+  { review_rating, review_comment }
+) => {
+  const rows = await sql.query(
+    `
+      UPDATE reviews
+      SET
+        review_rating = $2,
+        review_comment = $3,
+        reviewed_at = CURRENT_TIMESTAMP
+      WHERE request_id = $1
+      RETURNING review_id, request_id, review_rating, review_comment, reviewed_at
+    `,
+    [requestId, review_rating, review_comment ?? null]
+  );
+  return rows[0] ?? null;
+};
+
+export const deleteReviewByRequestId = async (requestId) => {
+  const rows = await sql.query(
+    `
+      DELETE FROM reviews
+      WHERE request_id = $1
+      RETURNING review_id, request_id, review_rating, review_comment, reviewed_at
+    `,
+    [requestId]
+  );
+  return rows[0] ?? null;
+};
+
 export const findCompanyReviews = async (companyId) => {
   return sql.query(
     `
