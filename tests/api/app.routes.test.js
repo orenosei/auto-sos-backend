@@ -17,10 +17,13 @@ const companyRepository = vi.hoisted(() => ({
   deleteCompanyById: vi.fn(),
   findAllCompanies: vi.fn(),
   findCompanyById: vi.fn(),
+  findCompanyReports: vi.fn(),
   findCompanyRatingsByIds: vi.fn(),
   findNearbyCompanies: vi.fn(),
   insertCompany: vi.fn(),
+  insertCompanyReport: vi.fn(),
   updateCompanyById: vi.fn(),
+  updateCompanyReportStatusById: vi.fn(),
 }));
 
 const companyServiceRepository = vi.hoisted(() => ({
@@ -70,6 +73,15 @@ const notificationRepository = vi.hoisted(() => ({
   markNotificationReadById: vi.fn(),
 }));
 
+const paymentRepository = vi.hoisted(() => ({
+  findLatestPaymentByRequest: vi.fn(),
+  findPaymentRequest: vi.fn(),
+  findPaymentTransactionByRef: vi.fn(),
+  insertPaymentTransaction: vi.fn(),
+  setRequestPaymentState: vi.fn(),
+  updatePaymentTransaction: vi.fn(),
+}));
+
 const requestImageRepository = vi.hoisted(() => ({
   deleteRequestImageById: vi.fn(),
   findRequestImages: vi.fn(),
@@ -116,6 +128,7 @@ vi.mock("../../src/repositories/companyServiceRepository.js", () => companyServi
 vi.mock("../../src/repositories/communityRepository.js", () => communityRepository);
 vi.mock("../../src/repositories/entityRepository.js", () => entityRepository);
 vi.mock("../../src/repositories/notificationRepository.js", () => notificationRepository);
+vi.mock("../../src/repositories/paymentRepository.js", () => paymentRepository);
 vi.mock("../../src/repositories/requestImageRepository.js", () => requestImageRepository);
 vi.mock("../../src/repositories/requestMessageRepository.js", () => requestMessageRepository);
 vi.mock("../../src/repositories/requestServiceRepository.js", () => requestServiceRepository);
@@ -391,6 +404,34 @@ describe("API routes", () => {
     });
     expect(listResponse.body).toEqual({ success: true, data: [notification] });
     expect(readResponse.body).toEqual({ success: true, data: readNotification });
+  });
+
+  it("selects cash payment through payment routes", async () => {
+    paymentRepository.findPaymentRequest.mockResolvedValue({
+      request_id: 10,
+      user_id: 5,
+      company_id: 2,
+      request_status: "completed",
+      final_price: 250000,
+      payment_status: "unpaid",
+    });
+    paymentRepository.setRequestPaymentState.mockResolvedValue({
+      request_id: 10,
+      payment_method: "cash",
+      payment_status: "pending",
+    });
+
+    const response = await request(app)
+      .post("/api/payments/requests/10/cash")
+      .send({ user_id: 5 })
+      .expect(200);
+
+    expect(response.body.data).toEqual(
+      expect.objectContaining({
+        payment_method: "cash",
+        payment_status: "pending",
+      })
+    );
   });
 
   it("manages request services and images through nested request routes", async () => {

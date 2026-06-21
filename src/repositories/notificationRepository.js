@@ -31,10 +31,21 @@ export const findActiveAdminUserIds = async () => {
 export const findNotifications = async ({ recipientType, recipientId, limit }) => {
   return sql.query(
     `
-      SELECT notification_id, recipient_type, recipient_id, request_id, title, message, notification_type, is_read, created_at
-      FROM notifications
-      WHERE recipient_type = $1 AND recipient_id = $2
-      ORDER BY created_at DESC
+      SELECT
+        n.notification_id,
+        n.recipient_type,
+        n.recipient_id,
+        n.request_id,
+        n.title,
+        n.message,
+        n.notification_type,
+        n.is_read,
+        n.created_at,
+        r.priority AS request_priority
+      FROM notifications n
+      LEFT JOIN requests r ON r.request_id = n.request_id
+      WHERE n.recipient_type = $1 AND n.recipient_id = $2
+      ORDER BY n.created_at DESC
       LIMIT $3
     `,
     [recipientType, recipientId, limit]

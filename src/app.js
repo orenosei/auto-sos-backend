@@ -9,6 +9,7 @@ import vehiclesRoutes from "./routes/vehiclesRoutes.js";
 import requestsRoutes from "./routes/requestsRoutes.js";
 import notificationsRoutes from "./routes/notificationsRoutes.js";
 import communityRoutes from "./routes/communityRoutes.js";
+import paymentsRoutes from "./routes/paymentsRoutes.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { notFoundHandler } from "./middlewares/notFoundHandler.js";
 import { requestLogger } from "./middlewares/requestLogger.js";
@@ -29,6 +30,7 @@ app.use("/api/vehicles", vehiclesRoutes);
 app.use("/api/requests", requestsRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/community", communityRoutes);
+app.use("/api/payments", paymentsRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

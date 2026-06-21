@@ -27,7 +27,10 @@ const REQUEST_SELECT = `
   cancelled_by,
   cancel_reason,
   final_price,
-  user_confirmed_at
+  user_confirmed_at,
+  payment_method,
+  payment_status,
+  paid_at
 `;
 
 export const findRequests = async ({ user_id, company_id, request_status }) => {

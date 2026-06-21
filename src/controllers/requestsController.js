@@ -170,13 +170,26 @@ export const createRequest = async (req, res) => {
     });
 
     if (created.company_id != null) {
+      const isEmergency = ["emergency", "critical", "urgent", "high"].includes(
+        created.priority
+      );
+      const requestDetails = [
+        `Mã yêu cầu: #${created.request_id}`,
+        isEmergency ? "Mức độ: KHẨN CẤP - cần ưu tiên xử lý ngay" : null,
+        created.issue_type || created.request_description
+          ? `Sự cố: ${created.issue_type || created.request_description}`
+          : null,
+        created.relative_location ? `Địa điểm: ${created.relative_location}` : null,
+        created.contact_name ? `Khách hàng: ${created.contact_name}` : null,
+        created.contact_phone ? `Liên hệ: ${created.contact_phone}` : null,
+      ].filter(Boolean);
       await createNotification({
         recipientType: "company",
         recipientId: created.company_id,
         requestId: created.request_id,
-        title: "Yêu cầu cứu hộ mới",
-        message: "Bạn có một yêu cầu cứu hộ mới cần tiếp nhận.",
-        type: "request_created",
+        title: isEmergency ? "🚨 Yêu cầu cứu hộ khẩn cấp mới" : "Yêu cầu cứu hộ mới",
+        message: ["Bạn có một yêu cầu cứu hộ mới cần tiếp nhận.", ...requestDetails].join("\n"),
+        type: isEmergency ? "request_created_emergency" : "request_created",
       });
     }
 
@@ -261,7 +274,7 @@ export const updateRequest = async (req, res) => {
         note,
       });
 
-      const notification = getRequestStatusNotification(next.request_status);
+      const notification = getRequestStatusNotification(next.request_status, next);
       if (notification && next.user_id != null) {
         await createNotification({
           recipientType: "user",

@@ -307,3 +307,57 @@ export const findCompanyCandidates = async ({
     [longitude, latitude, serviceId]
   );
 };
+
+export const insertCompanyReport = async ({ companyId, reporterUserId, reason }) => {
+  const rows = await sql.query(
+    `
+      INSERT INTO company_reports (company_id, reporter_user_id, reason)
+      VALUES ($1, $2, $3)
+      RETURNING *
+    `,
+    [companyId, reporterUserId, reason]
+  );
+  return rows[0];
+};
+
+export const findCompanyReports = async ({ status }) => {
+  const values = [];
+  const where = [];
+  if (status) {
+    values.push(status);
+    where.push(`cr.status = $${values.length}`);
+  }
+
+  return sql.query(
+    `
+      SELECT
+        cr.*,
+        c.company_name,
+        c.is_active AS company_is_active,
+        u.user_name AS reporter_user_name,
+        u.full_name AS reporter_full_name,
+        u.user_phone AS reporter_phone
+      FROM company_reports cr
+      JOIN companies c ON c.company_id = cr.company_id
+      LEFT JOIN users u ON u.user_id = cr.reporter_user_id
+      ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+      ORDER BY
+        CASE WHEN cr.status = 'pending' THEN 0 ELSE 1 END,
+        cr.created_at DESC
+    `,
+    values
+  );
+};
+
+export const updateCompanyReportStatusById = async (reportId, status) => {
+  const rows = await sql.query(
+    `
+      UPDATE company_reports
+      SET status = $1, updated_at = CURRENT_TIMESTAMP
+      WHERE report_id = $2
+      RETURNING *
+    `,
+    [status, reportId]
+  );
+  return rows[0] ?? null;
+};

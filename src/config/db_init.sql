@@ -23,7 +23,7 @@ CREATE TABLE users (
     avatar_url TEXT,
     user_role user_role_enum DEFAULT 'user',
     is_active BOOLEAN DEFAULT TRUE,
-    registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    registered_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 -- 2. Bảng công ty cứu hộ (company)
 CREATE TABLE companies (
@@ -39,8 +39,23 @@ CREATE TABLE companies (
     verification_document_urls TEXT[] DEFAULT ARRAY[]::TEXT[],
     is_verified BOOLEAN DEFAULT FALSE,
     is_active BOOLEAN DEFAULT TRUE,
-    registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    registered_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS company_reports (
+    report_id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT REFERENCES companies(company_id) ON DELETE CASCADE NOT NULL,
+    reporter_user_id BIGINT REFERENCES users(user_id) ON DELETE SET NULL,
+    reason TEXT NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending'
+        CHECK (status IN ('pending', 'reviewed', 'dismissed')),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_company_reports_pending_unique
+ON company_reports(company_id, reporter_user_id)
+WHERE status = 'pending';
 -- 3. Bảng danh mục dịch vụ cứu hộ (services)
 CREATE TABLE services (
     service_id BIGSERIAL PRIMARY KEY,
@@ -81,18 +96,18 @@ CREATE TABLE requests (
     contact_back_now BOOLEAN DEFAULT FALSE,
     priority VARCHAR(20) DEFAULT 'normal',
     request_status request_status_enum DEFAULT 'pending',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    estimated_arrival TIMESTAMP,
-    accepted_at TIMESTAMP,
-    heading_at TIMESTAMP,
-    arrived_at TIMESTAMP,
-    actual_arrival TIMESTAMP,
-    completed_at TIMESTAMP,
-    cancelled_at TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    estimated_arrival TIMESTAMPTZ,
+    accepted_at TIMESTAMPTZ,
+    heading_at TIMESTAMPTZ,
+    arrived_at TIMESTAMPTZ,
+    actual_arrival TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    cancelled_at TIMESTAMPTZ,
     cancelled_by VARCHAR(20),
     cancel_reason TEXT,
     final_price DECIMAL(12,2),
-    user_confirmed_at TIMESTAMP
+    user_confirmed_at TIMESTAMPTZ
 );
 
 CREATE TABLE request_status_history (
@@ -102,7 +117,7 @@ CREATE TABLE request_status_history (
     new_status request_status_enum NOT NULL,
     changed_by VARCHAR(20) NOT NULL,
     note TEXT,
-    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    changed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 -- 7. Bảng ảnh của yêu cầu cứu hộ
 CREATE TABLE request_images (
@@ -125,7 +140,7 @@ CREATE TABLE messages (
     message_sender message_sender_enum NOT NULL,
     message_content TEXT NOT NULL,
     is_seen BOOLEAN DEFAULT FALSE,
-    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    sent_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 -- 10. Bảng đánh giá (reviews)
 CREATE TABLE reviews (
@@ -133,13 +148,35 @@ CREATE TABLE reviews (
     request_id BIGINT UNIQUE REFERENCES requests(request_id) ON DELETE CASCADE NOT NULL,
     review_rating INTEGER CHECK (review_rating BETWEEN 1 AND 5) NOT NULL,
     review_comment TEXT,
-    reviewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    reviewed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Dùng khi nâng cấp một CSDL đã được tạo từ phiên bản cũ.
 ALTER TABLE requests ADD COLUMN IF NOT EXISTS request_note TEXT;
 ALTER TABLE requests ADD COLUMN IF NOT EXISTS assignment_mode VARCHAR(20) DEFAULT 'manual';
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS payment_method VARCHAR(20);
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS payment_status VARCHAR(20) DEFAULT 'unpaid';
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS payment_transactions (
+    transaction_id BIGSERIAL PRIMARY KEY,
+    request_id BIGINT REFERENCES requests(request_id) ON DELETE CASCADE NOT NULL,
+    provider VARCHAR(20) NOT NULL,
+    transaction_ref VARCHAR(100) UNIQUE NOT NULL,
+    amount DECIMAL(12,2) NOT NULL CHECK (amount >= 0),
+    status VARCHAR(20) DEFAULT 'pending'
+        CHECK (status IN ('pending', 'paid', 'failed', 'cancelled')),
+    provider_transaction_no VARCHAR(100),
+    response_code VARCHAR(20),
+    bank_code VARCHAR(50),
+    provider_payload JSONB,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_transactions_request
+ON payment_transactions(request_id, created_at DESC);
 
 CREATE TABLE notifications (
     notification_id BIGSERIAL PRIMARY KEY,
@@ -150,7 +187,7 @@ CREATE TABLE notifications (
     message TEXT NOT NULL,
     notification_type VARCHAR(50),
     is_read BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 -- 11. Bảng thẻ bài đăng (tags)
 CREATE TABLE tags (
@@ -166,7 +203,7 @@ CREATE TABLE posts (
     post_content TEXT NOT NULL,
     post_status VARCHAR(20) DEFAULT 'published',
     category VARCHAR(100),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 -- 13. Bảng liên kết: bài đăng được gắn thẻ nào (many-to-many)
 CREATE TABLE post_tags (
@@ -187,20 +224,20 @@ CREATE TABLE comments (
     user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE NOT NULL,
     comment_content TEXT NOT NULL,
     comment_status VARCHAR(20) DEFAULT 'published',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 -- 16. Bảng liên kết: người dùng nào like post nào
 CREATE TABLE post_likes (
     post_id BIGINT REFERENCES posts(post_id) ON DELETE CASCADE NOT NULL,
     user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE NOT NULL,
-    liked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    liked_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (post_id, user_id)
 );
 -- 17. Bảng liên kết: người dùng nào like comment nào
 CREATE TABLE comment_likes (
     comment_id BIGINT REFERENCES comments(comment_id) ON DELETE CASCADE NOT NULL,
     user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE NOT NULL,
-    liked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    liked_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (comment_id, user_id)
 );
 
@@ -211,7 +248,7 @@ CREATE TABLE content_reports (
     target_id BIGINT NOT NULL,
     reason TEXT NOT NULL,
     status VARCHAR(20) DEFAULT 'pending',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 

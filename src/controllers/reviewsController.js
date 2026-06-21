@@ -32,12 +32,17 @@ export const addReview = async (req, res) => {
 
     // Notify company if available
     if (requestRow.company_id != null) {
+      const reviewDetails = [
+        `Mã yêu cầu: #${id}`,
+        `Đánh giá: ${review_rating}/5 sao`,
+        review_comment?.trim() ? `Nhận xét: ${review_comment.trim()}` : null,
+      ].filter(Boolean);
       await createNotification({
         recipientType: 'company',
         recipientId: requestRow.company_id,
         requestId: id,
         title: 'Bạn vừa nhận được đánh giá mới',
-        message: 'Khách hàng đã gửi đánh giá cho dịch vụ cứu hộ.',
+        message: ['Khách hàng đã gửi đánh giá cho dịch vụ cứu hộ.', ...reviewDetails].join('\n'),
         type: 'review_created',
       });
     }

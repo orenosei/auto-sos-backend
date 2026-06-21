@@ -7,28 +7,96 @@ const companyRepository = vi.hoisted(() => ({
   findAllCompanies: vi.fn(),
   findCompanyById: vi.fn(),
   findCompanyCandidates: vi.fn(),
+  findCompanyReports: vi.fn(),
   findCompanyRatingsByIds: vi.fn(),
   findNearbyCompanies: vi.fn(),
   insertCompany: vi.fn(),
+  insertCompanyReport: vi.fn(),
   updateCompanyById: vi.fn(),
+  updateCompanyReportStatusById: vi.fn(),
+}));
+
+const entityRepository = vi.hoisted(() => ({
+  companyExists: vi.fn(),
+  userExists: vi.fn(),
+}));
+
+const notificationService = vi.hoisted(() => ({
+  createAdminNotifications: vi.fn(),
 }));
 
 vi.mock("../../../src/repositories/companyRepository.js", () => companyRepository);
+vi.mock("../../../src/repositories/entityRepository.js", () => entityRepository);
+vi.mock("../../../src/services/notificationService.js", () => notificationService);
 
 const {
+  createCompanyReport,
   createCompany,
   deleteCompany,
   getAllCompanies,
   getCompaniesRatings,
   getCompanyById,
+  getCompanyReports,
   getNearbyCompanies,
   recommendCompany,
+  updateCompanyReportStatus,
   updateCompany,
 } = await import("../../../src/controllers/companiesController.js");
 
 describe("companiesController", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    entityRepository.companyExists.mockResolvedValue(true);
+    entityRepository.userExists.mockResolvedValue(true);
+  });
+
+  it("creates, lists, and moderates company reports", async () => {
+    const created = {
+      report_id: 8,
+      company_id: 2,
+      reporter_user_id: 5,
+      reason: "Thu phí sai",
+      status: "pending",
+    };
+    companyRepository.insertCompanyReport.mockResolvedValue(created);
+    const createRes = createMockResponse();
+
+    await createCompanyReport(
+      {
+        params: { id: "2" },
+        body: { reporter_user_id: 5, reason: " Thu phí sai " },
+      },
+      createRes
+    );
+
+    expect(companyRepository.insertCompanyReport).toHaveBeenCalledWith({
+      companyId: "2",
+      reporterUserId: 5,
+      reason: "Thu phí sai",
+    });
+    expect(notificationService.createAdminNotifications).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "company_report" })
+    );
+    expect(createRes.status).toHaveBeenCalledWith(201);
+
+    companyRepository.findCompanyReports.mockResolvedValue([created]);
+    const listRes = createMockResponse();
+    await getCompanyReports({ query: { status: "pending" } }, listRes);
+    expect(companyRepository.findCompanyReports).toHaveBeenCalledWith({
+      status: "pending",
+    });
+    expect(listRes.status).toHaveBeenCalledWith(200);
+
+    companyRepository.updateCompanyReportStatusById.mockResolvedValue({
+      ...created,
+      status: "reviewed",
+    });
+    const updateRes = createMockResponse();
+    await updateCompanyReportStatus(
+      { params: { reportId: "8" }, body: { status: "reviewed" } },
+      updateRes
+    );
+    expect(updateRes.status).toHaveBeenCalledWith(200);
   });
 
   it("returns all companies and 404 for missing company detail", async () => {

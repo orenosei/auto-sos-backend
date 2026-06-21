@@ -65,6 +65,27 @@ psql "<DATABASE_URL>" -f src/config/db_init.sql
 
 Nếu dùng công cụ quản trị như pgAdmin, DBeaver hoặc Neon SQL Editor, có thể mở nội dung file `src/config/db_init.sql` và chạy trực tiếp.
 
+Với cơ sở dữ liệu đã tồn tại, chạy migration cho tính năng báo cáo công ty:
+
+```bash
+psql "<DATABASE_URL>" -f src/config/company_reports_migration.sql
+```
+
+Chạy migration cho tính năng thanh toán:
+
+```bash
+psql "<DATABASE_URL>" -f src/config/payments_migration.sql
+```
+
+Chuẩn hóa các cột thời gian cũ sang `TIMESTAMPTZ`:
+
+```bash
+psql "<DATABASE_URL>" -f src/config/timezone_migration.sql
+```
+
+Chạy migration timezone sau migration báo cáo công ty và thanh toán. Dữ liệu cũ
+được diễn giải là UTC; giao diện sẽ hiển thị theo `Asia/Ho_Chi_Minh` (GMT+7).
+
 ### 3. Cấu hình biến môi trường
 
 Tạo file `.env` trong thư mục `auto-sos-backend`:
@@ -89,9 +110,24 @@ CLOUDINARY_API_SECRET=
 # Mã dùng để mở trang /admin
 ADMIN_ACCESS_CODE=abc123
 
+# VNPay sandbox/production
+VNPAY_TMN_CODE=
+VNPAY_HASH_SECRET=
+VNPAY_PAYMENT_URL=https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
+VNPAY_RETURN_URL=http://localhost:5001/api/payments/vnpay-return
+VNPAY_FRONTEND_RETURN_URL=http://localhost:5173/payment-result
+
 # Chỉ cần khi chạy integration test
 # TEST_DATABASE_URL=postgresql://user:password@host/test_database?sslmode=require
 ```
+
+Trong trang quản trị merchant của VNPay, cấu hình IPN URL:
+
+```text
+http://<backend-public-domain>/api/payments/vnpay-ipn
+```
+
+VNPay không thể gọi IPN vào `localhost`; khi kiểm thử callback cần dùng backend có URL HTTPS công khai.
 
 Backend ưu tiên `DATABASE_URL`. Nếu không có `DATABASE_URL`, hệ thống sẽ ghép chuỗi kết nối từ `PGUSER`, `PGPASSWORD`, `PGHOST`, `PGDATABASE`.
 

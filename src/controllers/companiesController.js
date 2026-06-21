@@ -8,10 +8,15 @@ import {
   findCompanyPasswordById,
   findCompanyRatingsByIds,
   findNearbyCompanies,
+  findCompanyReports,
   insertCompany,
+  insertCompanyReport,
   updateCompanyById,
+  updateCompanyReportStatusById,
   updateCompanyPasswordHash,
 } from "../repositories/companyRepository.js";
+import { companyExists, userExists } from "../repositories/entityRepository.js";
+import { createAdminNotifications } from "../services/notificationService.js";
 import { toGeogText } from "../utils/geo.js";
 
 export const getAllCompanies = async (req, res) => {
@@ -200,6 +205,82 @@ export const getCompaniesRatings = async (req, res) => {
     res.status(200).json({ success: true, data: map });
   } catch (error) {
     console.error("Error fetching batch company ratings:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const createCompanyReport = async (req, res) => {
+  const { id } = req.params;
+  const reporterUserId = req.body?.reporter_user_id ?? req.body?.user_id;
+  const reason = String(req.body?.reason ?? "").trim();
+
+  if (!reporterUserId || !reason) {
+    return res.status(400).json({
+      error: "Missing required fields: reporter_user_id, reason",
+    });
+  }
+
+  try {
+    if (!(await companyExists(id))) {
+      return res.status(404).json({ error: "Company not found" });
+    }
+    if (!(await userExists(reporterUserId))) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const created = await insertCompanyReport({
+      companyId: id,
+      reporterUserId,
+      reason,
+    });
+
+    await createAdminNotifications({
+      title: "Có báo cáo công ty mới",
+      message: `Người dùng đã báo cáo công ty #${id}.\nLý do: ${reason}`,
+      type: "company_report",
+    });
+
+    res.status(201).json({ success: true, data: created });
+  } catch (error) {
+    if (error?.code === "23505") {
+      return res.status(409).json({
+        error: "Bạn đã có một báo cáo đang chờ xử lý cho công ty này.",
+      });
+    }
+    console.error(`Error reporting company ${id}:`, error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const getCompanyReports = async (req, res) => {
+  const status = String(req.query?.status ?? "").trim();
+  if (status && !["pending", "reviewed", "dismissed"].includes(status)) {
+    return res.status(400).json({ error: "Invalid report status" });
+  }
+
+  try {
+    const rows = await findCompanyReports({ status });
+    res.status(200).json({ success: true, data: rows });
+  } catch (error) {
+    console.error("Error fetching company reports:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const updateCompanyReportStatus = async (req, res) => {
+  const status = String(req.body?.status ?? "").trim();
+  if (!["pending", "reviewed", "dismissed"].includes(status)) {
+    return res.status(400).json({
+      error: "status must be pending, reviewed, or dismissed",
+    });
+  }
+
+  try {
+    const updated = await updateCompanyReportStatusById(req.params.reportId, status);
+    if (!updated) return res.status(404).json({ error: "Report not found" });
+    res.status(200).json({ success: true, data: updated });
+  } catch (error) {
+    console.error(`Error updating company report ${req.params.reportId}:`, error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };

@@ -8,6 +8,9 @@ import { getAllCompanies,
     deleteCompany,
     getNearbyCompanies,
     getCompaniesRatings,
+    createCompanyReport,
+    getCompanyReports,
+    updateCompanyReportStatus,
     recommendCompany } from '../controllers/companiesController.js';
 
 import {
@@ -23,7 +26,10 @@ const router = express.Router();
 router.get('/', getAllCompanies);
 router.get('/nearby', getNearbyCompanies); // Phải nằm trước /:id để tránh xung đột
 router.get('/ratings', getCompaniesRatings); // batch ratings for multiple ids
+router.get('/reports', getCompanyReports);
+router.put('/reports/:reportId/status', updateCompanyReportStatus);
 router.post('/recommend', recommendCompany);
+router.post('/:id/reports', createCompanyReport);
 router.get('/:id', getCompanyById);
 
 // Company services (company_services)

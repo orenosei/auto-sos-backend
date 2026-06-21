@@ -151,4 +151,33 @@ describe("notificationService", () => {
     expect(getRequestStatusNotification("pending")).toBeNull();
     expect(getRequestStatusNotification("unknown")).toBeNull();
   });
+
+  it("includes available request details in status notifications", () => {
+    const notification = getRequestStatusNotification("completed", {
+      request_id: 42,
+      issue_type: "Thủng lốp",
+      relative_location: "Đường Phạm Văn Đồng",
+      final_price: 250000,
+    });
+
+    expect(notification).toEqual([
+      "Yêu cầu đã hoàn tất",
+      [
+        "Dịch vụ cứu hộ đã được đánh dấu hoàn tất.",
+        "Mã yêu cầu: #42",
+        "Sự cố: Thủng lốp",
+        "Địa điểm: Đường Phạm Văn Đồng",
+        "Chi phí: 250.000đ",
+      ].join("\n"),
+    ]);
+  });
+
+  it("formats estimated arrival in the Vietnam timezone", () => {
+    const notification = getRequestStatusNotification("accepted", {
+      request_id: 42,
+      estimated_arrival: "2026-06-21T06:30:45.000Z",
+    });
+
+    expect(notification[1]).toContain("Dự kiến đến: 13:30 21/6/26");
+  });
 });
